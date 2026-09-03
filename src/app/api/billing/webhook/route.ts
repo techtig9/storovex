@@ -1,43 +1,79 @@
+// Reads request headers (rate limiting, auth cookies), so it can never be prerendered.
+export const dynamic = "force-dynamic";
 
-import {NextRequest,NextResponse} from "next/server";
-import {actionForEvent,assertNotProcessed,normalizeSubscriptionStatus,type PaddleEventType} from "@/core/billing/paddleWebhook";
+import {type NextRequest} from "next/server";
+import {actionForEvent, normalizeSubscriptionStatus, type PaddleEventType} from "@/core/billing/paddleWebhook";
 import {verifyPaddleSignature} from "@/core/billing/paddleSignature";
-import {createServerStorageClient} from "@/core/storage/supabaseStorage";
+import {createServiceRoleSupabase} from "@/core/supabase/server";
+import {withApi, apiSuccess, apiError} from "@/core/security/apiHandler";
 
-export async function POST(req:NextRequest){
- const rawBody=await req.text();
- const signatureHeader=req.headers.get("paddle-signature");
- const secret=process.env.PADDLE_WEBHOOK_SECRET;
+/**
+ * Paddle webhook receiver.
+ *
+ * Two things were wrong before. It used the cookie-based anon client, and a webhook
+ * arrives with no session, so RLS rejected every write it attempted. And its
+ * idempotency was a SELECT followed by an INSERT, which two concurrent redeliveries
+ * both pass.
+ *
+ * Applying entitlements is Phase 3; this records the event exactly once and leaves a
+ * clear seam for that. It does not yet change any subscription.
+ */
+export const POST = withApi(
+  {methods: ["POST"], allowAnyContentType: true},
+  async (req: NextRequest) => {
+    const rawBody = await req.text();
+    const signatureHeader = req.headers.get("paddle-signature");
+    const secret = process.env.PADDLE_WEBHOOK_SECRET;
 
- if(!secret)return NextResponse.json({error:"PADDLE_WEBHOOK_SECRET_NOT_CONFIGURED"},{status:500});
- if(!signatureHeader)return NextResponse.json({error:"PADDLE_SIGNATURE_MISSING"},{status:401});
- try{
-  verifyPaddleSignature(signatureHeader,rawBody,secret);
- }catch(e){
-  return NextResponse.json({error:e instanceof Error?e.message:"PADDLE_SIGNATURE_INVALID"},{status:401});
- }
+    if (!secret) return apiError(500, "NOT_CONFIGURED", "Billing webhooks are not configured.");
+    if (!signatureHeader) return apiError(401, "SIGNATURE_MISSING", "Missing signature.");
 
- const body=JSON.parse(rawBody);
- const eventId:string|undefined=body?.event_id;
- const eventType:PaddleEventType|undefined=body?.event_type;
- if(!eventId||!eventType)return NextResponse.json({error:"PADDLE_EVENT_MALFORMED"},{status:400});
+    try {
+      verifyPaddleSignature(signatureHeader, rawBody, secret);
+    } catch {
+      return apiError(401, "SIGNATURE_INVALID", "Signature verification failed.");
+    }
 
- const c=createServerStorageClient();
- const {data:processed}=await c.from("billing_webhook_events").select("id").eq("id",eventId).maybeSingle();
- try{
-  const known=processed?new Set([processed.id]):new Set<string>();
-  assertNotProcessed(known,eventId);
- }catch{
-  return NextResponse.json({status:"already_processed"},{status:200});
- }
+    let body: {event_id?: string; event_type?: PaddleEventType; data?: {status?: string}};
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return apiError(400, "MALFORMED", "Body is not valid JSON.");
+    }
 
- const action=actionForEvent(eventType);
- if(body?.data?.status){
-  normalizeSubscriptionStatus(body.data.status); // throws on unrecognized status
- }
+    const eventId = body.event_id;
+    const eventType = body.event_type;
+    if (!eventId || !eventType) return apiError(400, "MALFORMED", "Missing event id or type.");
 
- const {error}=await c.from("billing_webhook_events").insert({id:eventId,type:eventType,action,payload:body});
- if(error)return NextResponse.json({error:"WEBHOOK_PERSIST_FAILED"},{status:500});
+    let action: string;
+    try {
+      action = actionForEvent(eventType);
+    } catch {
+      // Unknown event types are acknowledged, not retried forever. Paddle adds new
+      // ones over time and a 4xx would make it redeliver indefinitely.
+      return apiSuccess({status: "ignored", reason: "unsupported_event_type"});
+    }
 
- return NextResponse.json({status:"ok",action});
-}
+    if (body.data?.status) {
+      try {
+        normalizeSubscriptionStatus(body.data.status);
+      } catch {
+        return apiError(422, "UNKNOWN_STATUS", "Unrecognised subscription status.");
+      }
+    }
+
+    // Insert-first idempotency: the primary key decides the winner, so concurrent
+    // redeliveries cannot both proceed. A conflict means it is already recorded.
+    const supabase = createServiceRoleSupabase();
+    const {data: inserted, error} = await supabase
+      .from("billing_webhook_events")
+      .upsert({id: eventId, type: eventType, action, payload: body}, {onConflict: "id", ignoreDuplicates: true})
+      .select("id");
+
+    if (error) return apiError(500, "PERSIST_FAILED", "Could not record the event.", error);
+    if (!inserted || inserted.length === 0) return apiSuccess({status: "already_processed"});
+
+    // Phase 3 applies `action` to subscriptions, credit grants and access here.
+    return apiSuccess({status: "recorded", action});
+  }
+);

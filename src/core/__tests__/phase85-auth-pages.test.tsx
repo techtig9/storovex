@@ -6,8 +6,15 @@ import {render,screen,fireEvent,waitFor} from "@testing-library/react";
 import LoginPage from "../../app/(auth)/login/page";
 import SignupPage from "../../app/(auth)/signup/page";
 
-function mockFetchOnce(ok:boolean){
- global.fetch=jest.fn().mockResolvedValue({ok,json:async()=>({})}) as any;
+function mockFetchOnce(ok:boolean,failureMessage="Request failed"){
+ // Routes answer with the shared {ok,data} / {ok,error} envelope, so the failure
+ // message under test is whatever the server would actually have sent.
+ global.fetch=jest.fn().mockResolvedValue({
+  ok,
+  json:async()=>(ok
+   ?{ok:true,data:{message:"Check your email to confirm your account."}}
+   :{ok:false,error:{code:"FAILED",message:failureMessage}}),
+ }) as any;
 }
 
 describe("LoginPage",()=>{
@@ -17,7 +24,7 @@ describe("LoginPage",()=>{
   // jsdom doesn't implement navigation; stub location so a successful submit doesn't crash the test.
   // @ts-expect-error - test-only override of a readonly global
   delete window.location;
-  (window as any).location={href:""};
+  (window as any).location={href:"",assign:jest.fn()};
 
   render(<LoginPage />);
   fireEvent.change(screen.getByLabelText("Email"),{target:{value:"ada@example.com"}});
@@ -29,12 +36,12 @@ describe("LoginPage",()=>{
  });
 
  it("shows an error message when the request fails",async()=>{
-  mockFetchOnce(false);
+  mockFetchOnce(false,"Email or password is incorrect.");
   render(<LoginPage />);
   fireEvent.change(screen.getByLabelText("Email"),{target:{value:"ada@example.com"}});
   fireEvent.change(screen.getByLabelText("Password"),{target:{value:"wrongpass"}});
   fireEvent.click(screen.getByRole("button",{name:"Log in"}));
-  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Couldn't log you in"));
+  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Email or password is incorrect."));
  });
 });
 
@@ -45,11 +52,11 @@ describe("SignupPage",()=>{
   expect(screen.getByText("Create account")).toBeInTheDocument();
  });
  it("shows an error message when signup fails",async()=>{
-  mockFetchOnce(false);
+  mockFetchOnce(false,"We couldn't create that account.");
   render(<SignupPage />);
   fireEvent.change(screen.getByLabelText("Email"),{target:{value:"ada@example.com"}});
   fireEvent.change(screen.getByLabelText("Password"),{target:{value:"correcthorse"}});
   fireEvent.click(screen.getByRole("button",{name:"Create account"}));
-  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Couldn't create your account"));
+  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("We couldn't create that account."));
  });
 });

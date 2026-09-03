@@ -10,14 +10,18 @@ export default function LoginPage(){
   setSubmitting(true);
   setError(undefined);
   try{
-   // Wire this to Supabase Auth once the browser client from your earlier phases is
-   // merged in (supabase.auth.signInWithPassword), or point this fetch at a server
-   // route built on top of it. Left as a clearly-marked integration point rather
-   // than a fabricated client, since this codebase's session handling (session.ts)
-   // already assumes a specific Supabase client setup this zip doesn't include.
-   const res=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)});
-   if(!res.ok)throw new Error("Couldn't log you in. Check your email and password.");
-   window.location.href="/dashboard";
+   const res=await fetch("/api/auth/login",{
+    method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input),
+   });
+   if(!res.ok){
+    const body=await res.json().catch(()=>null);
+    throw new Error(body?.error?.message??"Couldn't log you in. Check your email and password.");
+   }
+   // Read the post-login destination from the URL the middleware redirected us with.
+   // Only a same-origin path survives, so this can't be turned into an open redirect.
+   const next=new URLSearchParams(window.location.search).get("next");
+   const safe=next&&next.startsWith("/")&&!next.startsWith("//")?next:"/dashboard";
+   window.location.assign(safe);
   }catch(e){
    setError(e instanceof Error?e.message:"Something went wrong. Try again.");
   }finally{

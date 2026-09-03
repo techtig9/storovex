@@ -1,10 +1,10 @@
 
-import {createServerStorageClient} from "../storage/supabaseStorage";
+import {createServerSupabase} from "@/core/supabase/server";
 import {isDeadLetterQueueUnhealthy,isFeatureEnabled,assertPlanOverrideReasonProvided,type FeatureFlag} from "./adminRules";
 
 export async function getJobsHealth(){
  const since=new Date(Date.now()-24*60*60*1000).toISOString();
- const c=createServerStorageClient();
+ const c=createServerSupabase();
  const [{count:total},{count:deadLettered}]=await Promise.all([
   c.from("ai_generation_requests").select("id",{count:"exact",head:true}).gte("created_at",since),
   c.from("ai_generation_requests").select("id",{count:"exact",head:true}).eq("stage","failed").gte("created_at",since),
@@ -13,7 +13,7 @@ export async function getJobsHealth(){
 }
 
 export async function evaluateFeatureFlag(key:string,bucketValue:number){
- const c=createServerStorageClient();
+ const c=createServerSupabase();
  const {data,error}=await c.from("feature_flags").select("enabled,rollout_pct").eq("key",key).maybeSingle();
  if(error||!data)return false;
  const flag:FeatureFlag={enabled:data.enabled,rolloutPct:data.rollout_pct??undefined};
@@ -22,7 +22,7 @@ export async function evaluateFeatureFlag(key:string,bucketValue:number){
 
 export async function applyPlanOverride(input:{adminUserId:string;storeId:string;newPlanId:string;reason:string}){
  assertPlanOverrideReasonProvided(input.reason);
- const c=createServerStorageClient();
+ const c=createServerSupabase();
  const {error:updErr}=await c.from("subscriptions").update({plan_id:input.newPlanId}).eq("store_id",input.storeId).eq("status","active");
  if(updErr)throw new Error(`PLAN_OVERRIDE_FAILED: ${updErr.message}`);
  const {error:auditErr}=await c.from("admin_audit_events").insert({

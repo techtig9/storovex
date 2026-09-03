@@ -21,8 +21,16 @@ export default function DashboardPage(){
  },[]);
 
  useEffect(()=>{
-  fetch("/api/dashboard/kpis?storeId=current").then(r=>r.json()).then(setKpis).catch(()=>setKpis(null));
-  fetch("/api/projects?storeId=current").then(r=>r.json()).then(d=>setProjects(d.projects??[])).catch(()=>setProjects([]));
+  // No storeId: the server resolves the caller's store from their session. Sending
+  // the literal string "current" as an id, as this used to, could never match a UUID.
+  const ac=new AbortController();
+  fetch("/api/dashboard/kpis",{signal:ac.signal})
+   .then(r=>r.ok?r.json():Promise.reject(new Error("kpis")))
+   .then(b=>setKpis(b.data??null)).catch(()=>setKpis(null));
+  fetch("/api/projects",{signal:ac.signal})
+   .then(r=>r.ok?r.json():Promise.reject(new Error("projects")))
+   .then(b=>setProjects(b.data?.projects??[])).catch(()=>setProjects([]));
+  return ()=>ac.abort();
  },[]);
 
  function handleThemeChange(next:ThemeId){

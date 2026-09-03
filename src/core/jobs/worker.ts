@@ -1,5 +1,5 @@
 
-import {createServerStorageClient} from "../storage/supabaseStorage";
+import {createServerSupabase} from "@/core/supabase/server";
 
 export type QueuedJob={
  id:string;store_id:string|null;user_id:string|null;job_type:string;payload:Record<string,unknown>;
@@ -7,7 +7,7 @@ export type QueuedJob={
 };
 
 export async function claimNextJob(workerId:string):Promise<QueuedJob|null>{
- const c=createServerStorageClient();
+ const c=createServerSupabase();
 
  const {data:acquired,error:slotErr}=await c.rpc("try_acquire_worker_slot",{p_worker_id:workerId});
  if(slotErr)throw new Error(`WORKER_SLOT_ACQUIRE_FAILED: ${slotErr.message}`);
@@ -26,7 +26,7 @@ export async function claimNextJob(workerId:string):Promise<QueuedJob|null>{
 }
 
 export async function finishJob(jobId:string,workerId:string){
- const c=createServerStorageClient();
+ const c=createServerSupabase();
  const {error}=await c.from("job_queue").update({status:"done",updated_at:new Date().toISOString()}).eq("id",jobId);
  await c.rpc("release_worker_slot",{p_worker_id:workerId});
  if(error)throw new Error(`JOB_FINISH_FAILED: ${error.message}`);
@@ -34,7 +34,7 @@ export async function finishJob(jobId:string,workerId:string){
 }
 
 export async function failJob(jobId:string,workerId:string,reason:string){
- const c=createServerStorageClient();
+ const c=createServerSupabase();
  const {data:job}=await c.from("job_queue").select("attempts,max_attempts").eq("id",jobId).single();
  const deadLetter=!job||job.attempts>=job.max_attempts;
  const {error}=await c.from("job_queue").update({

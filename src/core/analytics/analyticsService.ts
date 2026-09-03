@@ -1,10 +1,10 @@
 
-import {createServerStorageClient} from "../storage/supabaseStorage";
+import {createServerSupabase} from "@/core/supabase/server";
 import {mrrFromMonthlyAmounts,arrFromMrr,churnRate,aiCostPerCustomerCents,marginPct} from "./metrics";
 import {PLANS,priceForCycle,type PlanId,type BillingCycle} from "../billing/plans";
 
 export async function getRevenueOverview(){
- const c=createServerStorageClient();
+ const c=createServerSupabase();
  const {data:activeSubs,error}=await c.from("subscriptions").select("plan_id,billing_cycle").eq("status","active");
  if(error)throw new Error(`REVENUE_OVERVIEW_FAILED: ${error.message}`);
 
@@ -23,7 +23,7 @@ export async function getRevenueOverview(){
 }
 
 export async function getAiUsageAndMargin(){
- const c=createServerStorageClient();
+ const c=createServerSupabase();
  const {count:activeCustomers}=await c.from("subscriptions").select("id",{count:"exact",head:true}).eq("status","active");
  const {data:commits}=await c.from("credit_ledger").select("amount").eq("type","commit");
  // Credits are the internal cost proxy; convert to cents via a configured per-credit cost.

@@ -1,10 +1,10 @@
 
-import {createServerStorageClient} from "../storage/supabaseStorage";
+import {createServerSupabase} from "@/core/supabase/server";
 import {summarizeKpis} from "./dashboardMetrics";
 import {includedCredits,type PlanId} from "../billing/plans";
 
 export async function getDashboardKpis(storeId:string){
- const c=createServerStorageClient();
+ const c=createServerSupabase();
  const [{count:totalUsers},{count:activated},{count:generationsTotal},{count:generationsSucceeded},{data:account},{data:sub}]=await Promise.all([
   c.from("store_members").select("id",{count:"exact",head:true}).eq("store_id",storeId).eq("status","active"),
   c.from("projects").select("id",{count:"exact",head:true}).eq("store_id",storeId).eq("status","active"),

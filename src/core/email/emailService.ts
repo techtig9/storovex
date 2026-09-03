@@ -1,10 +1,10 @@
 
-import {createServerStorageClient} from "../storage/supabaseStorage";
+import {createServerSupabase} from "@/core/supabase/server";
 import {assertTemplateVarsComplete,mustBypassSuppression,type EmailEventType} from "./emailCatalog";
 
 export async function sendTransactionalEmail(input:{to:string;type:EmailEventType;vars:Record<string,unknown>;storeId?:string}){
  assertTemplateVarsComplete(input.type,input.vars);
- const c=createServerStorageClient();
+ const c=createServerSupabase();
 
  if(!mustBypassSuppression(input.type)){
   const {data:suppressed}=await c.from("email_suppressions").select("email").eq("email",input.to).maybeSingle();

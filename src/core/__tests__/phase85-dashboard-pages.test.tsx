@@ -10,8 +10,8 @@ import BillingPage from "../../app/(dashboard)/billing/page";
 describe("DashboardPage",()=>{
  it("loads KPIs and projects and renders them",async()=>{
   global.fetch=jest.fn()
-   .mockResolvedValueOnce({json:async()=>({activationRatePct:40,generationSuccessRatePct:90,creditsRemainingPct:60})})
-   .mockResolvedValueOnce({json:async()=>({projects:[{id:"p1",name:"Fall Drop",status:"active",updatedAt:"2026-01-01",frameCount:2}]})}) as any;
+   .mockResolvedValueOnce({ok:true,json:async()=>({ok:true,data:{activationRatePct:40,generationSuccessRatePct:90,creditsRemainingPct:60}})})
+   .mockResolvedValueOnce({ok:true,json:async()=>({ok:true,data:{projects:[{id:"p1",name:"Fall Drop",status:"active",updatedAt:"2026-01-01",frameCount:2}]}})}) as any;
 
   render(<DashboardPage />);
   expect(screen.getByText("Loading your numbers…")).toBeInTheDocument();
@@ -21,8 +21,8 @@ describe("DashboardPage",()=>{
 
  it("shows an empty projects state when there are none",async()=>{
   global.fetch=jest.fn()
-   .mockResolvedValueOnce({json:async()=>({activationRatePct:0,generationSuccessRatePct:100,creditsRemainingPct:100})})
-   .mockResolvedValueOnce({json:async()=>({projects:[]})}) as any;
+   .mockResolvedValueOnce({ok:true,json:async()=>({ok:true,data:{activationRatePct:0,generationSuccessRatePct:100,creditsRemainingPct:100}})})
+   .mockResolvedValueOnce({ok:true,json:async()=>({ok:true,data:{projects:[]}})}) as any;
   render(<DashboardPage />);
   await waitFor(()=>expect(screen.getByText("No projects yet")).toBeInTheDocument());
  });
@@ -30,17 +30,17 @@ describe("DashboardPage",()=>{
 
 describe("GeneratePage",()=>{
  it("starts a generation and shows progress",async()=>{
-  global.fetch=jest.fn().mockResolvedValue({ok:true,status:201,json:async()=>({stage:"building"})}) as any;
+  global.fetch=jest.fn().mockResolvedValue({ok:true,status:201,json:async()=>({ok:true,data:{stage:"building"}})}) as any;
   render(<GeneratePage />);
   fireEvent.click(screen.getByRole("button",{name:"Generate"}));
   await waitFor(()=>expect(screen.getByRole("status")).toHaveTextContent("Building the layout."));
  });
 
  it("shows an insufficient-credits message on a 402",async()=>{
-  global.fetch=jest.fn().mockResolvedValue({ok:false,status:402,json:async()=>({error:"INSUFFICIENT_CREDITS"})}) as any;
+  global.fetch=jest.fn().mockResolvedValue({ok:false,status:402,json:async()=>({ok:false,error:{code:"INSUFFICIENT_CREDITS",message:"You don't have enough credits for this generation."}})}) as any;
   render(<GeneratePage />);
   fireEvent.click(screen.getByRole("button",{name:"Generate"}));
-  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Not enough credits"));
+  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("You don't have enough credits"));
  });
 });
 

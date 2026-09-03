@@ -35,3 +35,10 @@ export function sanitizeSearchQuery(q:string){
  const trimmed=q.trim().slice(0,MAX_QUERY_LENGTH);
  return trimmed.length===0?undefined:trimmed;
 }
+
+// ILIKE treats % and _ as wildcards. An unescaped user term of "%%%%%%" forces a
+// scan that is cheap to send and expensive to serve, and "_" silently widens
+// matches. Postgres needs the backslash itself escaped first.
+export function escapeLikePattern(value:string){
+ return value.replace(/\\/g,"\\\\").replace(/%/g,"\\%").replace(/_/g,"\\_");
+}

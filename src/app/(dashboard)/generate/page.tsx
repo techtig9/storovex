@@ -1,5 +1,5 @@
 "use client";
-import React, {useState} from "react";
+import React, {useEffect, useState} from "react";
 import {AppShell} from "../../../components/shell/AppShell";
 import {GenerationForm} from "../../../components/generation/GenerationForm";
 import {GenerationProgress} from "../../../components/generation/GenerationProgress";
@@ -11,6 +11,10 @@ import {randomToken} from "../../../core/ui/randomToken";
 
 export default function GeneratePage(){
  const [theme,setTheme]=useState<ThemeId>(resolveTheme(typeof window!=="undefined"?window.localStorage.getItem("storovex-theme"):undefined));
+ const [projectId,setProjectId]=useState<string|undefined>();
+ useEffect(()=>{
+  setProjectId(new URLSearchParams(window.location.search).get("projectId")??undefined);
+ },[]);
  const [submitting,setSubmitting]=useState(false);
  const [stage,setStage]=useState<AnnouncedStage|null>(null);
  const [errorMessage,setErrorMessage]=useState<string|undefined>();
@@ -22,11 +26,18 @@ export default function GeneratePage(){
   try{
    const res=await fetch("/api/generation",{
     method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({...input,storeId:"current",projectId:"current",accountId:"current",planId:"starter",idempotencyKey:randomToken()}),
+    // accountId and planId are gone on purpose: the server derives both from the
+    // authenticated session. They used to be sent from here, which let a caller pick
+    // their own spend cap and name which credit account to bill.
+    body:JSON.stringify({projectId,...input,idempotencyKey:randomToken()}),
    });
-   if(res.status===402){setErrorMessage("Not enough credits for this generation.");setStage("failed");return;}
-   if(!res.ok){setErrorMessage("Couldn't start the generation. Try again.");setStage("failed");return;}
-   setStage(((await res.json()).stage as AnnouncedStage)??"building");
+   const body=await res.json().catch(()=>null);
+   if(!res.ok){
+    setErrorMessage(body?.error?.message??"Couldn't start the generation. Try again.");
+    setStage("failed");
+    return;
+   }
+   setStage((body?.data?.stage as AnnouncedStage)??"building");
   }catch{
    setErrorMessage("Couldn't reach the server. Check your connection and try again.");
    setStage("failed");
