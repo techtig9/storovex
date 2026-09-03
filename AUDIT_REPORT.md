@@ -22,6 +22,7 @@ not verified, it says so.
 | Secret scan | regex over `src/`, `supabase/`, `*.json`, `*.md` | **clean — no committed secrets** |
 | Dead-code scan | import graph over `src/core` | **16 of 45 core modules never imported** |
 | Figma inspection | `mcp__Figma__whoami` | authenticated; **blocked — see §14** |
+| Deployed database | `mcp__Supabase__list_projects` + `list_tables` | **no Storovex database exists** — see §9 |
 
 Two claims in `PLAN.md` need correcting:
 
@@ -307,6 +308,13 @@ appear in client bundles or logs. The `redact()` helper exists (though unused).
 - **B3/B4/B5/B6 above are all database problems and all P0.** In their current state
   these migrations have demonstrably never been applied to a real Postgres — 34
   statements are outright syntax errors and 12 reference an undefined function.
+- **Independently corroborated: there is no Storovex database.** The connected
+  Supabase account holds exactly two projects, `ufo` and `webma`, and neither
+  contains any Storovex table — no `stores`, `store_members`, `credit_accounts`,
+  `job_queue`, `ai_generation_requests`, `platform_admins` or `email_events`.
+  (`webma` is a separate website-builder product with 107 template rows.) The
+  migrations in this repository have never been applied anywhere, which is exactly
+  what the syntax errors predict.
 - **`store_members.store_id` has no foreign key** to `stores` (it is created in
   phase 77, before `stores` exists in phase 83). No referential integrity on the
   central tenancy table.
@@ -478,33 +486,38 @@ soft deletes · seed data
 
 ---
 
-## 16. The decision I need from you
+## 16. Product direction — DECIDED
 
-Everything in Phases 1–3 below is identical under all three options, because it is
-all repair of what already exists. **Options only diverge at Phase 4.**
+Confirmed by the product owner on 2026-09-03: **Option C — both, sequenced.**
 
-**Option A — Repair and complete the product that exists** (AI product photography).
-Fix all P0/P1, wire real AI providers, build the missing generation workspace and
-gallery, redesign to the spec's visual language. Does **not** deliver a store builder.
-~4 phases. Lowest risk, fastest to revenue, contradicts the specs' scope.
+1. **First**, repair the foundation and complete the product that exists: AI product
+   photography for online stores. This is Phases 1–3 plus a Phase 4 frontend, and it
+   is the revenue-generating wedge.
+2. **Then**, build the AI ecommerce store builder described in the specifications on
+   top of a codebase that is by then secure, tested and deployable.
 
-**Option B — Pivot to the specified product** (AI ecommerce store builder).
-Keep the auth/security/billing/credit/job foundation, replace the generation domain
-with commerce: new schema for products/orders/customers/collections/themes, a
-builder, a storefront renderer, cart and checkout. ~70% new build. Matches the specs.
-Substantially larger; commerce correctness (inventory, payments, tax) is high-risk work.
+Rationale: AI product photography is an easier sell to ecommerce merchants than a
+Shopify replacement, and it is a natural on-ramp to a store builder. Sequencing also
+means the high-risk commerce work (inventory, payments, tax) lands on a proven
+foundation rather than a broken one.
 
-**Option C — Both, sequenced** *(my recommendation)*.
-Ship Option A first as the revenue-generating product and the proof that the
-foundation is sound, then add the store builder on top of a codebase that is already
-secure, tested and deployable. AI product photography is a genuinely strong wedge for
-ecommerce merchants and a natural on-ramp to a store builder — and it is far easier
-to sell "generate your product photos" than "replace your Shopify".
+Consequences for this plan:
 
-I recommend **C**, and I recommend not writing a line of Phase 4 code until you have
-chosen, because Phase 4 is where the choice becomes expensive to reverse.
+- Phases 1–3 are unchanged — they are repair work required under any option.
+- Phase 4 delivers the photography product's frontend in the specified visual
+  language. The store builder, storefront, products, orders, customers and theme
+  customiser move to a **Phase 6+ track**, scoped separately once Phase 5 ships.
+- The specifications' store-builder screen inventory is therefore **deliberately not
+  built in Phase 4**. That is a sequencing decision, not an omission.
 
----
+### Two further decisions taken at the same time
+
+- **Migration validation:** the rewritten migrations will be applied to a **scratch
+  Supabase project** and verified there before merge. New projects in the connected
+  organisation cost **$0/month**, so this is free. RLS will be proven by test, not by
+  inspection — cross-tenant reads must actually fail.
+- **Styling:** **Tailwind CSS** replaces the inline-style architecture in Phase 4.
+  Migration is component-by-component behind the existing tests, never as one commit.
 
 ## 17. Proposed 5-phase execution order
 
@@ -533,9 +546,11 @@ Dependencies are strict: each phase depends on all previous ones.
 7. Replace the `"current"` placeholder ids with a real store context. **(fixes B11)**
 
 **High-risk:** the migration rewrite. It must be validated against a real Postgres
-before merge, not just read. **Gate:** typecheck, lint, full test suite, `next build`,
-migrations applied to a scratch Supabase project, and a written IDOR/cross-tenant
-test suite that fails on today's code.
+before merge, not just read — and as of this audit it never has been (§9).
+**Gate:** typecheck, lint, full test suite, `next build`, migrations applied cleanly
+to a **scratch Supabase project** (free in this organisation), RLS proven by a
+cross-tenant test that actually fails to read another store's rows, and an
+IDOR test suite that fails on today's code and passes after.
 
 ### Phase 2 — AI provider integration and the generation pipeline
 *Depends on: Phase 1 (auth, ownership, validated entitlements).*
@@ -568,17 +583,18 @@ reservations against one balance) and a proven no-negative-balance invariant.
 out-of-order-delivery tests. **Gate:** full billing lifecycle E2E against Paddle sandbox.
 
 ### Phase 4 — Premium frontend, design system, Figma
-*Depends on: Phases 1–3, and on your §16 decision.*
+*Depends on: Phases 1–3. Product direction settled in §16.*
 
-1. **Adopt Tailwind** (or CSS Modules) — the inline-style architecture cannot express
+1. **Adopt Tailwind** (decided) — the inline-style architecture cannot express
    hover, focus, active, disabled or media queries, and the spec requires all of them.
+   Migrate component-by-component behind the existing tests.
 2. Design tokens from the selected Figma direction; `next/font` for real font loading;
    semantic success/warning/error colours; the motion token scale. **(fixes B14)**
 3. Build the component library — all 30 named in the spec.
 4. Rebuild every screen; add responsive behaviour at all 9 breakpoints; add loading,
    empty and error states; add the motion system.
-5. Under Option B/C, this is also where the builder, storefront, products, orders,
-   customers and theme customiser are built — a phase of its own in practice.
+5. Per §16, the builder, storefront, products, orders, customers and theme customiser
+   are **not** in this phase — they are the Phase 6+ track, scoped after Phase 5.
 
 **High-risk:** the styling migration touches every component at once. Do it
 component-by-component behind the existing tests, never as one commit.

@@ -111,19 +111,31 @@ of which direction wins:
 2. **The theming architecture itself** — `data-theme` attribute + CSS custom
    properties. It is the right mechanism; only the token values need to change.
 
-## 4. What is not decided here
+## 4. Decided since this document was first written
 
-- Whether Storovex is an AI product photography tool or an AI store builder.
-  That is AUDIT_REPORT §16 and it is yours to decide; the visual direction above
-  works for either, but the screen inventory does not.
-- Any component-level specification. That comes from the Figma file.
-- Whether to adopt Tailwind. Strongly recommended in AUDIT_REPORT §17 Phase 4 for
-  reasons independent of Figma: the current inline-style architecture cannot express
-  `:hover`, `:focus`, `:active`, `:disabled` or `@media` at all.
+- **Product direction: Option C — both, sequenced** (AUDIT_REPORT §16). Phase 4
+  dresses the AI product photography product in the visual language above; the store
+  builder follows on a Phase 6+ track. The direction in §2 works for both, so nothing
+  here changes — but the **screen inventory Phase 4 delivers is the photography
+  product's**, not the specifications' store-builder inventory.
+- **Tailwind CSS is adopted** for Phase 4. This was recommended for reasons
+  independent of Figma: React inline styles cannot express `:hover`, `:focus`,
+  `:active`, `:disabled` or `@media` at all, so the specifications' hover lift,
+  button-press feedback and responsive builder panels are unreachable without it.
+  Tailwind's theme layer also maps cleanly onto whatever tokens the Figma file yields.
+
+## 5. Still not decided here
+
+- Component-level specification — typography ramp, component anatomy, states,
+  and the real spacing and colour usage. All of that comes from the Figma file, and
+  is why §1 still needs a URL.
+- Whether the seven existing photography themes are retired or kept alongside the
+  new token set. Recommendation stands: retire the palette, keep High Contrast and
+  keep the `data-theme` + CSS-custom-property mechanism.
 
 ---
 
-## 5. Rules being followed
+## 6. Rules being followed
 
 - Figma is the design source of truth; the repository and database are the source of
   truth for functionality, data and security.
