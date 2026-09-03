@@ -6,6 +6,7 @@ import {actionForEvent, normalizeSubscriptionStatus, type PaddleEventType} from 
 import {verifyPaddleSignature} from "@/core/billing/paddleSignature";
 import {createServiceRoleSupabase} from "@/core/supabase/server";
 import {withApi, apiSuccess, apiError} from "@/core/security/apiHandler";
+import {applyPaddleEvent} from "@/core/billing/entitlementSync";
 
 /**
  * Paddle webhook receiver.
@@ -15,8 +16,8 @@ import {withApi, apiSuccess, apiError} from "@/core/security/apiHandler";
  * idempotency was a SELECT followed by an INSERT, which two concurrent redeliveries
  * both pass.
  *
- * Applying entitlements is Phase 3; this records the event exactly once and leaves a
- * clear seam for that. It does not yet change any subscription.
+ * The event is recorded exactly once, then applied: subscription state, plan sync,
+ * credit grants and access revocation all flow from here.
  */
 export const POST = withApi(
   {methods: ["POST"], allowAnyContentType: true},
@@ -73,7 +74,15 @@ export const POST = withApi(
     if (error) return apiError(500, "PERSIST_FAILED", "Could not record the event.", error);
     if (!inserted || inserted.length === 0) return apiSuccess({status: "already_processed"});
 
-    // Phase 3 applies `action` to subscriptions, credit grants and access here.
-    return apiSuccess({status: "recorded", action});
+    // Applied after the event is recorded, so a crash mid-apply cannot be replayed
+    // into a second credit grant — grant_credits is keyed on this event id.
+    try {
+      const applied = await applyPaddleEvent(body as never);
+      return apiSuccess({status: "processed", ...applied});
+    } catch (e) {
+      // The event is durably recorded. Return 500 so Paddle retries the apply rather
+      // than dropping an entitlement change on the floor.
+      return apiError(500, "APPLY_FAILED", "Could not apply the billing event.", e);
+    }
   }
 );

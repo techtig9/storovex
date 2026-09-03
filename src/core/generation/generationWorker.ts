@@ -4,6 +4,7 @@ import {advanceStage, completeGenerationRequest, failGenerationRequest} from "./
 import {estimateCredits, type GenerationType, type Quality} from "./catalog";
 import {ProviderError, type FetchLike} from "@/core/ai/providers/types";
 import {randomUUID} from "crypto";
+import {notifyGenerationOutcome} from "./generationNotifier";
 
 export type JobPayload = {
   jobId: string; accountId: string; type: GenerationType; quality: Quality; count: number;
@@ -102,6 +103,13 @@ export async function processGenerationJob(
       actualAmount: Math.min(actual, reserved), assetIds,
     });
 
+    // Notifications never fail the job: the user's images exist either way.
+    await notifyGenerationOutcome({
+      jobId: payload.jobId, storeId: jobRow?.store_id as string | undefined,
+      projectId: jobRow?.project_id as string | undefined,
+      outcome: "completed", assetCount: assetIds.length,
+    });
+
     return {ok: true, assetIds};
   } catch (e) {
     const reason = e instanceof ProviderError
@@ -117,6 +125,19 @@ export async function processGenerationJob(
     const {deadLetter} = await failGenerationRequest({
       jobId: payload.jobId, accountId: payload.accountId, attempt, reason,
     });
+
+    // Only tell the user once the job is genuinely finished. A job that will retry
+    // has not failed yet, and mailing them about every attempt would be noise.
+    if (deadLetter) {
+      const {data: failedJob} = await supabase
+        .from("ai_generation_requests").select("store_id,project_id").eq("id", payload.jobId).maybeSingle();
+      await notifyGenerationOutcome({
+        jobId: payload.jobId, storeId: failedJob?.store_id as string | undefined,
+        projectId: failedJob?.project_id as string | undefined,
+        outcome: "failed", reason,
+      });
+    }
+
     return {ok: false, deadLetter, reason};
   }
 }
