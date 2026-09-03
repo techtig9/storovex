@@ -1,42 +1,84 @@
+import {createServiceRoleSupabase} from "@/core/supabase/server";
+import {InsufficientCreditsError} from "./creditLedger";
+import {maxSpendPerJob, type PlanId} from "./plans";
 
-import {createServerSupabase} from "@/core/supabase/server";
-import {reserveCredits,commitReservation,refundReservation,InsufficientCreditsError} from "./creditLedger";
-import {maxSpendPerJob,type PlanId} from "./plans";
+/**
+ * Thin wrappers over the atomic Postgres functions in migration 11.
+ *
+ * The previous implementation read the balance, checked it in JavaScript, inserted a
+ * ledger row, then updated the balance in a separate statement. Two concurrent
+ * requests both passed the check, and a failure between the two writes left the
+ * ledger and the balance permanently disagreeing. All of that logic now lives in one
+ * locked transaction inside the database; these functions only translate results.
+ */
 
-export async function reserveJobCredits(input:{accountId:string;storeId:string;planId:PlanId;jobId:string;amount:number;idempotencyKey:string}){
- const c=createServerSupabase();
- const {data:account,error:accErr}=await c.from("credit_accounts").select("id,balance").eq("id",input.accountId).single();
- if(accErr||!account)throw new Error("CREDIT_ACCOUNT_NOT_FOUND");
- const {data:existing}=await c.from("credit_ledger").select("id").eq("idempotency_key",input.idempotencyKey).maybeSingle();
- if(existing)throw new Error("DUPLICATE_IDEMPOTENCY_KEY");
- const newBalance=reserveCredits(account.balance,input.amount,maxSpendPerJob(input.planId));
- const {error:ledgerErr}=await c.from("credit_ledger").insert({
-  account_id:input.accountId,type:"reservation",amount:input.amount,job_id:input.jobId,idempotency_key:input.idempotencyKey,
- });
- if(ledgerErr)throw new Error(`LEDGER_WRITE_FAILED: ${ledgerErr.message}`);
- const {error:updErr}=await c.from("credit_accounts").update({balance:newBalance}).eq("id",input.accountId);
- if(updErr)throw new Error(`CREDIT_BALANCE_UPDATE_FAILED: ${updErr.message}`);
- return {balance:newBalance};
+export class LedgerError extends Error {
+  constructor(readonly code: string) { super(code); }
 }
 
-export async function commitJobCredits(input:{accountId:string;jobId:string;reservedAmount:number;actualAmount:number}){
- const c=createServerSupabase();
- const {committed,refunded}=commitReservation(input.reservedAmount,input.actualAmount);
- const {error:commitErr}=await c.from("credit_ledger").insert({account_id:input.accountId,type:"commit",amount:committed,job_id:input.jobId});
- if(commitErr)throw new Error(`LEDGER_COMMIT_FAILED: ${commitErr.message}`);
- if(refunded>0){
-  const {error:refundErr}=await c.from("credit_ledger").insert({account_id:input.accountId,type:"refund",amount:refunded,job_id:input.jobId});
-  if(refundErr)throw new Error(`LEDGER_REFUND_FAILED: ${refundErr.message}`);
- }
- return {committed,refunded};
+type RpcResult = {ok: boolean; error?: string; [k: string]: unknown};
+
+async function callLedgerFn(name: string, args: Record<string, unknown>): Promise<RpcResult> {
+  const supabase = createServiceRoleSupabase();
+  const {data, error} = await supabase.rpc(name, args);
+  if (error) throw new LedgerError(`LEDGER_RPC_FAILED: ${name}`);
+  return data as RpcResult;
 }
 
-export async function refundJobCredits(input:{accountId:string;jobId:string;reservedAmount:number}){
- const c=createServerSupabase();
- const amount=refundReservation(input.reservedAmount);
- const {error}=await c.from("credit_ledger").insert({account_id:input.accountId,type:"refund",amount,job_id:input.jobId});
- if(error)throw new Error(`LEDGER_REFUND_FAILED: ${error.message}`);
- return {refunded:amount};
+export async function reserveJobCredits(input: {
+  accountId: string; planId: PlanId; jobId: string; amount: number; idempotencyKey: string;
+}) {
+  const result = await callLedgerFn("reserve_credits", {
+    p_account_id: input.accountId,
+    p_amount: input.amount,
+    p_job_id: input.jobId,
+    p_idempotency_key: input.idempotencyKey,
+    p_max_per_job: maxSpendPerJob(input.planId),
+  });
+
+  if (!result.ok) {
+    if (result.error === "INSUFFICIENT_CREDITS") throw new InsufficientCreditsError();
+    throw new LedgerError(result.error ?? "LEDGER_RESERVE_FAILED");
+  }
+  return {
+    balance: result.balance as number,
+    reserved: result.reserved as number,
+    // A replayed idempotency key is a success, not an error: the caller retried.
+    duplicate: result.duplicate === true,
+  };
+}
+
+export async function commitJobCredits(input: {accountId: string; jobId: string; actualAmount: number}) {
+  const result = await callLedgerFn("commit_credits", {
+    p_account_id: input.accountId, p_job_id: input.jobId, p_actual_amount: input.actualAmount,
+  });
+  if (!result.ok) throw new LedgerError(result.error ?? "LEDGER_COMMIT_FAILED");
+  return {committed: result.committed as number, refunded: result.refunded as number, balance: result.balance as number};
+}
+
+export async function refundJobCredits(input: {accountId: string; jobId: string; reason?: string}) {
+  const result = await callLedgerFn("refund_credits", {
+    p_account_id: input.accountId, p_job_id: input.jobId,
+    p_reason: input.reason ?? "generation failed",
+  });
+  // A job that already settled is not an error worth failing the caller over — it
+  // means a retry raced us, and the credits are already where they should be.
+  if (!result.ok && result.error === "LEDGER_JOB_ALREADY_SETTLED") {
+    return {refunded: 0, alreadySettled: true};
+  }
+  if (!result.ok) throw new LedgerError(result.error ?? "LEDGER_REFUND_FAILED");
+  return {refunded: result.refunded as number, alreadySettled: false};
+}
+
+export async function grantCredits(input: {
+  accountId: string; amount: number; idempotencyKey: string; reason?: string;
+}) {
+  const result = await callLedgerFn("grant_credits", {
+    p_account_id: input.accountId, p_amount: input.amount,
+    p_idempotency_key: input.idempotencyKey, p_reason: input.reason ?? "plan grant",
+  });
+  if (!result.ok) throw new LedgerError(result.error ?? "LEDGER_GRANT_FAILED");
+  return {granted: result.granted as number, duplicate: result.duplicate === true, balance: result.balance as number};
 }
 
 export {InsufficientCreditsError};
