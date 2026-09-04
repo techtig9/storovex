@@ -32,7 +32,8 @@ export async function providerFetch(
       const body = await res.text().catch(() => "");
       throw new ProviderError(
         provider,
-        classifyProviderError(res.status),
+        // The body matters: some providers report a bad credential inside a 400.
+        classifyProviderError(res.status, undefined, body),
         // Truncated: provider errors can echo the whole prompt back.
         `${provider} responded ${res.status}: ${body.slice(0, 500)}`,
         res.status

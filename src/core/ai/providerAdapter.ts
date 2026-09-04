@@ -1,10 +1,18 @@
 
 export type ProviderErrorClass="rate_limit"|"timeout"|"auth"|"validation"|"provider_outage"|"permanent";
 
-export function classifyProviderError(status:number|undefined,code?:string){
+// Not every provider signals a bad credential with 401 or 403. Google returns
+// HTTP 400 with {"error":{"status":"INVALID_ARGUMENT","details":[{"reason":
+// "API_KEY_INVALID"}]}} — verified against the live API, not assumed. Classifying
+// that as "validation" would tell an operator their request was malformed and send
+// them to inspect the prompt when the real problem is the key.
+const AUTH_IN_BODY=/API_KEY_INVALID|UNAUTHENTICATED|PERMISSION_DENIED|api key not valid|invalid[_ ]api[_ ]key|invalid x-api-key|authentication[_ ]error/i;
+
+export function classifyProviderError(status:number|undefined,code?:string,body?:string){
  if(status===429)return "rate_limit" as const;
  if(status===401||status===403)return "auth" as const;
  if(status===408||code==="ETIMEDOUT"||code==="TIMEOUT")return "timeout" as const;
+ if((status===400||status===422)&&body&&AUTH_IN_BODY.test(body))return "auth" as const;
  if(status===400||status===422)return "validation" as const;
  if(status!==undefined&&status>=500)return "provider_outage" as const;
  return "permanent" as const;

@@ -231,3 +231,47 @@ describe("prompt construction", () => {
     expect(buildImagePrompt({type: "product_hero"})).not.toContain("undefined");
   });
 });
+
+describe("credential failures that do not use 401 or 403", () => {
+  // This body is the verbatim response from the live Google API for an invalid key,
+  // captured with curl. Google answers HTTP 400, not 401 — so classifying purely on
+  // status told an operator their request was malformed when the key was the problem.
+  const GOOGLE_INVALID_KEY_BODY = JSON.stringify({
+    error: {
+      code: 400,
+      message: "API key not valid. Please pass a valid API key.",
+      status: "INVALID_ARGUMENT",
+      details: [{
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        reason: "API_KEY_INVALID",
+        domain: "googleapis.com",
+      }],
+    },
+  });
+
+  it("classifies Google's HTTP 400 API_KEY_INVALID as auth, not validation", async () => {
+    const fetchImpl: FetchLike = async () => new Response(GOOGLE_INVALID_KEY_BODY, {status: 400});
+    const err = await providerFetch("gemini", "https://example.test", {}, {fetchImpl}).catch(e => e);
+    expect((err as ProviderError).errorClass).toBe("auth");
+  });
+
+  it("still classifies a genuinely malformed request as validation", async () => {
+    const body = JSON.stringify({error: {message: "candidateCount must be <= 8"}});
+    const fetchImpl: FetchLike = async () => new Response(body, {status: 400});
+    const err = await providerFetch("gemini", "https://example.test", {}, {fetchImpl}).catch(e => e);
+    expect((err as ProviderError).errorClass).toBe("validation");
+  });
+
+  it("recognises Anthropic's authentication_error wording inside a 400", async () => {
+    const body = JSON.stringify({type: "error", error: {type: "authentication_error", message: "invalid x-api-key"}});
+    const fetchImpl: FetchLike = async () => new Response(body, {status: 400});
+    const err = await providerFetch("anthropic", "https://example.test", {}, {fetchImpl}).catch(e => e);
+    expect((err as ProviderError).errorClass).toBe("auth");
+  });
+
+  it("keeps an auth failure out of the retry loop", async () => {
+    // Retrying a bad key just burns time and rate limit; it will fail identically.
+    const {isRetryable} = await import("@/core/ai/providerAdapter");
+    expect(isRetryable("auth")).toBe(false);
+  });
+});

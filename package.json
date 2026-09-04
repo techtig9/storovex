@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
-    "verify": "npm run typecheck && npm run lint && npm test && npm run build"
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build",
+    "verify:integrations": "node scripts/verify-integrations.mjs",
+    "test:live": "STOROVEX_LIVE_TESTS=1 jest providerContract.live"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.1",
