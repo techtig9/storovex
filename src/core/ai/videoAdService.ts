@@ -8,13 +8,13 @@ import type {FetchLike} from "./providers/types";
  *
  * Driven off product_video_ads.status rather than a separate queue table: the status
  * column already exists and a row is its own work item, so there is one source of
- * truth for whether an ad is pending, generating, ready or failed.
+ * truth for whether an ad is pending, processing, ready or failed.
  *
  * The contract mirrors the credit rule everywhere else: every request ends either
  * committed with a video, or refunded.
  */
 
-export type VideoAdStatus = "pending" | "generating" | "ready" | "failed";
+export type VideoAdStatus = "pending" | "processing" | "ready" | "failed";
 
 export type VideoAdRequest = {
   storeId: string; productId: string;
@@ -29,11 +29,11 @@ export async function requestVideoAd(input: VideoAdRequest) {
   const {data: existing} = await supabase
     .from("product_video_ads").select("id,status")
     .eq("product_id", input.productId)
-    .in("status", ["pending", "generating"])
+    .in("status", ["pending", "processing"])
     .maybeSingle();
   if (existing) return {id: existing.id as string, status: existing.status as VideoAdStatus, duplicate: true};
 
-  const {usageId, remaining} = await spendCredits({storeId: input.storeId, feature: "video_ad"});
+  const {usageId, remaining} = await spendCredits({storeId: input.storeId, feature: "product_video_ad"});
 
   const {data, error} = await supabase.from("product_video_ads").insert({
     product_id: input.productId, store_id: input.storeId,
@@ -48,9 +48,11 @@ export async function requestVideoAd(input: VideoAdRequest) {
     throw new Error("VIDEO_AD_CREATE_FAILED");
   }
 
-  // The usage id travels with the row so the worker can settle it either way.
-  await supabase.from("credit_usage").update({feature: `video_ad:${data.id}`}).eq("id", usageId);
-
+  // The usage id is returned to the caller rather than stashed on the row. There is
+  // nowhere on credit_usage to put it — the table is (id, store_id, feature,
+  // credits_spent, status, created_at) and `feature` is constrained to a fixed list,
+  // so the id-suffix trick I first used could not have inserted at all. Whoever
+  // requests the ad holds the id and hands it to processVideoAd to settle.
   return {id: data.id as string, status: data.status as VideoAdStatus, usageId, remaining, duplicate: false};
 }
 
@@ -63,22 +65,22 @@ export async function requestVideoAd(input: VideoAdRequest) {
 export async function processVideoAd(
   adId: string,
   generate: (req: {productTitle: string; hasMusic: boolean; hasVoiceover: boolean}) => Promise<{videoUrl: string}>,
-  opts: {fetchImpl?: FetchLike} = {}
+  opts: {fetchImpl?: FetchLike; usageId?: string} = {}
 ): Promise<{ok: true; videoUrl: string} | {ok: false; reason: string}> {
   const supabase = createServiceRoleSupabase();
 
   // Claim it conditionally, so two workers cannot generate the same ad twice.
   const {data: claimed} = await supabase
-    .from("product_video_ads").update({status: "generating"})
+    .from("product_video_ads").update({status: "processing"})
     .eq("id", adId).eq("status", "pending")
     .select("id,product_id,store_id,has_music,has_voiceover");
 
   if (!claimed || claimed.length === 0) return {ok: false, reason: "ALREADY_CLAIMED"};
   const ad = claimed[0]!;
 
-  const {data: usage} = await supabase
-    .from("credit_usage").select("id").eq("feature", `video_ad:${adId}`).maybeSingle();
-  const usageId = usage?.id as string | undefined;
+  // Optional: an ad picked up without one (an orphan from an earlier crash) still
+  // generates, it just has no charge to settle.
+  const usageId = opts.usageId;
 
   try {
     const {data: product} = await supabase

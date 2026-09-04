@@ -157,3 +157,75 @@ begin
 end $$;
 grant select,insert,update,delete on all tables in schema public to authenticated;
 grant select on all tables in schema public to anon;
+
+-- ============================================================
+-- CHECK constraints, copied verbatim from the live project.
+-- ============================================================
+-- These were missing, and their absence is why a whole class of bug reached the
+-- live database undetected: every status and role column here was a bare `text`,
+-- so this fixture happily accepted 'published' products, 'owner' team members and
+-- 'generating' video ads — none of which the real schema permits. Local tests
+-- passed against vocabulary the product does not have.
+--
+-- A test fixture that is more permissive than production does not merely fail to
+-- catch bugs, it manufactures confidence in them. Anything added here later must
+-- be copied from the live constraint, not invented to suit the code.
+
+do $$
+begin
+  alter table public.products drop constraint if exists products_status_check;
+  alter table public.products add constraint products_status_check
+    check (status = any (array['draft'::text,'active'::text,'archived'::text]));
+
+  alter table public.store_team_members drop constraint if exists store_team_members_role_check;
+  alter table public.store_team_members add constraint store_team_members_role_check
+    check (role = any (array['manager'::text,'staff'::text]));
+
+  alter table public.orders drop constraint if exists orders_status_check;
+  alter table public.orders add constraint orders_status_check
+    check (status = any (array['pending_payment'::text,'paid'::text,'failed'::text,
+                               'fulfilled'::text,'cancelled'::text,'refunded'::text]));
+
+  alter table public.carts drop constraint if exists carts_status_check;
+  alter table public.carts add constraint carts_status_check
+    check (status = any (array['open'::text,'converted'::text,'abandoned'::text]));
+
+  alter table public.discounts drop constraint if exists discounts_type_check;
+  alter table public.discounts add constraint discounts_type_check
+    check (type = any (array['percent'::text,'fixed'::text]));
+
+  alter table public.assistant_messages drop constraint if exists assistant_messages_role_check;
+  alter table public.assistant_messages add constraint assistant_messages_role_check
+    check (role = any (array['user'::text,'assistant'::text]));
+
+  alter table public.users drop constraint if exists users_role_check;
+  alter table public.users add constraint users_role_check
+    check (role = any (array['user'::text,'admin'::text]));
+
+  alter table public.channels drop constraint if exists channels_channel_check;
+  alter table public.channels add constraint channels_channel_check
+    check (channel = any (array['amazon'::text,'google_shopping'::text,'facebook_instagram'::text]));
+
+  alter table public.channels drop constraint if exists channels_status_check;
+  alter table public.channels add constraint channels_status_check
+    check (status = any (array['queued'::text,'connected'::text]));
+
+  alter table public.cart_items drop constraint if exists cart_items_quantity_check;
+  alter table public.cart_items add constraint cart_items_quantity_check check (quantity > 0);
+
+  -- The two widened by 06_widen_status_vocabulary.sql; see that file for why.
+  alter table public.credit_usage drop constraint if exists credit_usage_status_check;
+  alter table public.credit_usage add constraint credit_usage_status_check
+    check (status = any (array['completed'::text,'failed'::text,
+                               'reserved'::text,'refunded'::text]));
+
+  alter table public.credit_usage drop constraint if exists credit_usage_feature_check;
+  alter table public.credit_usage add constraint credit_usage_feature_check
+    check (feature = any (array['voice_search'::text,'product_video_ad'::text,
+                                'video_ad_regenerate'::text,'video_ad_music'::text,
+                                'video_ad_voiceover'::text,'ai_assistant_message'::text]));
+
+  alter table public.product_video_ads drop constraint if exists product_video_ads_status_check;
+  alter table public.product_video_ads add constraint product_video_ads_status_check
+    check (status = any (array['processing'::text,'ready'::text,'failed'::text,'pending'::text]));
+end $$;

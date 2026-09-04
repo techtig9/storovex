@@ -13,7 +13,9 @@ import type {FetchLike} from "./providers/types";
  * exactly what happens when a reply is stored immediately after a question.
  */
 
-export type AssistantRole = "user" | "assistant" | "system";
+// assistant_messages.role is constrained to these two. The system prompt is sent to
+// the model as a separate field and is never stored, so it is not a role here.
+export type AssistantRole = "user" | "assistant";
 const MAX_CONTEXT_MESSAGES = 20;
 
 /** Next sequence number for a store, so ordering is explicit rather than inferred. */
@@ -49,7 +51,7 @@ async function buildSystemPrompt(storeId: string): Promise<string> {
     supabase.from("orders").select("id", {count: "exact", head: true}).eq("store_id", storeId),
   ]);
 
-  const published = (products ?? []).filter(p => p.status === "published").map(p => p.title);
+  const published = (products ?? []).filter(p => p.status === "active").map(p => p.title);
   const drafts = (products ?? []).filter(p => p.status === "draft").length;
 
   return [
@@ -82,7 +84,7 @@ export async function sendAssistantMessage(input: {
     store_id: input.storeId, sequence: userSequence, role: "user", content: input.content,
   });
 
-  const {usageId} = await spendCredits({storeId: input.storeId, feature: "assistant"});
+  const {usageId} = await spendCredits({storeId: input.storeId, feature: "ai_assistant_message"});
 
   try {
     const history = await loadConversation(input.storeId);

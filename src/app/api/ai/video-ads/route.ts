@@ -35,7 +35,7 @@ export const POST = withApi(
     } catch (e) {
       if (e instanceof InsufficientCreditsError) {
         return apiError(402, "INSUFFICIENT_CREDITS",
-          `A video ad costs ${FEATURE_COST.video_ad} credits and you don't have enough.`);
+          `A video ad costs ${FEATURE_COST.product_video_ad} credits and you don't have enough.`);
       }
       throw e;
     }

@@ -20,8 +20,18 @@ describe("AI feature pricing", () => {
 
   it("charges more for a video than for a chat turn", () => {
     // A mispriced feature is a direct margin loss, so the ordering is asserted.
-    expect(FEATURE_COST.video_ad).toBeGreaterThan(FEATURE_COST.assistant);
-    expect(FEATURE_COST.image).toBeGreaterThan(FEATURE_COST.assistant);
+    expect(FEATURE_COST.product_video_ad).toBeGreaterThan(FEATURE_COST.ai_assistant_message);
+    expect(FEATURE_COST.video_ad_music).toBeGreaterThan(FEATURE_COST.ai_assistant_message);
+  });
+
+  it("prices only the features credit_usage.feature actually permits", () => {
+    // The database constrains this column to six values. A name outside that list
+    // cannot be inserted, so a priced feature that is not on it is a charge the
+    // audit trail can never record.
+    expect(Object.keys(FEATURE_COST).sort()).toEqual([
+      "ai_assistant_message", "product_video_ad", "video_ad_music",
+      "video_ad_regenerate", "video_ad_voiceover", "voice_search",
+    ]);
   });
 });
 

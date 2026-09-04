@@ -30,7 +30,7 @@ export async function listStorefrontProducts(storeId: string, opts: {limit?: num
     .eq("store_id", storeId)
     // Belt and braces with the RLS policy: if a policy is ever loosened by mistake,
     // the storefront still refuses to render a draft.
-    .eq("status", "published")
+    .eq("status", "active")
     .limit(opts.limit ?? 48);
 
   if (opts.search?.trim()) {
@@ -59,7 +59,7 @@ export async function getStorefrontProduct(storeId: string, productId: string) {
   const {data} = await supabase
     .from("products")
     .select("id,title,description,product_variants(id,sku,price,compare_at_price,stock_quantity,options),product_images(url,position),product_video_ads(video_url,status)")
-    .eq("id", productId).eq("store_id", storeId).eq("status", "published")
+    .eq("id", productId).eq("store_id", storeId).eq("status", "active")
     .maybeSingle();
 
   if (!data) return null;

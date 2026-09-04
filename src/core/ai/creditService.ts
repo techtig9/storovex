@@ -12,14 +12,28 @@ import {createServiceRoleSupabase} from "@/core/supabase/server";
  * entry never claims a charge that did not happen.
  */
 
-export type AiFeature = "video_ad" | "assistant" | "product_copy" | "image";
+/**
+ * The feature names are not ours to choose: credit_usage.feature carries a CHECK
+ * constraint listing exactly these six values, so anything else fails to insert.
+ * Two features I had costed — product copy and image generation — are absent from
+ * that list, which is the database saying the product does not offer them.
+ */
+export type AiFeature =
+  | "voice_search"
+  | "product_video_ad"
+  | "video_ad_regenerate"
+  | "video_ad_music"
+  | "video_ad_voiceover"
+  | "ai_assistant_message";
 
 /** What each feature costs. Kept here so a price change is one edit, not a search. */
 export const FEATURE_COST: Record<AiFeature, number> = {
-  video_ad: 25,
-  assistant: 1,
-  product_copy: 3,
-  image: 8,
+  product_video_ad: 25,
+  video_ad_regenerate: 25,
+  video_ad_music: 5,
+  video_ad_voiceover: 5,
+  ai_assistant_message: 1,
+  voice_search: 1,
 };
 
 export class InsufficientCreditsError extends Error {

@@ -11,7 +11,7 @@ import {z} from "zod";
 const listSchema = z.object({
   storeId: z.string().uuid().optional(),
   search: z.string().max(200).optional(),
-  status: z.enum(["draft", "published", "archived"]).optional(),
+  status: z.enum(["draft", "active", "archived"]).optional(),
   page: z.coerce.number().int().min(1).max(10000).optional(),
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
 });

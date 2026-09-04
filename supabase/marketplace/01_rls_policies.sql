@@ -37,12 +37,15 @@ returns text language sql stable security definer set search_path = public as $$
   where store_id = p_store_id and user_id = auth.uid() limit 1;
 $$;
 
--- Owners and admins may change team membership and delete records; plain members
--- may not. Kept as its own predicate so the distinction is stated once.
+-- Managers may change team membership and delete records; staff may not. Kept as
+-- its own predicate so the distinction is stated once.
+-- store_team_members.role is constrained to 'manager' and 'staff'. Checking for
+-- 'owner' or 'admin', as this did originally, could never be true for anyone, so
+-- every admin-gated policy denied the whole world including the actual owner.
 create or replace function public.is_store_admin(p_store_id uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select coalesce(
-    (select role in ('owner','admin') from public.store_team_members
+    (select role = 'manager' from public.store_team_members
      where store_id = p_store_id and user_id = auth.uid() limit 1),
     false);
 $$;
@@ -87,9 +90,11 @@ using (public.is_store_member(store_id)) with check (public.is_store_member(stor
 
 -- The storefront is anonymous, so `anon` needs read access — but only to products a
 -- merchant has actually published. A draft must never be visible.
+-- 'active' is the published state: products_status_check allows draft|active|archived
+-- and has no 'published' value at all.
 drop policy if exists "products_public_read_published" on public.products;
 create policy "products_public_read_published" on public.products
-for select to anon, authenticated using (status = 'published');
+for select to anon, authenticated using (status = 'active');
 
 drop policy if exists "variants_member_all" on public.product_variants;
 create policy "variants_member_all" on public.product_variants
@@ -101,7 +106,7 @@ using (public.is_store_member(store_id)) with check (public.is_store_member(stor
 drop policy if exists "variants_public_read_published" on public.product_variants;
 create policy "variants_public_read_published" on public.product_variants
 for select to anon, authenticated
-using (exists (select 1 from public.products p where p.id = product_id and p.status = 'published'));
+using (exists (select 1 from public.products p where p.id = product_id and p.status = 'active'));
 
 drop policy if exists "images_member_all" on public.product_images;
 create policy "images_member_all" on public.product_images
@@ -111,7 +116,7 @@ using (public.is_store_member(store_id)) with check (public.is_store_member(stor
 drop policy if exists "images_public_read_published" on public.product_images;
 create policy "images_public_read_published" on public.product_images
 for select to anon, authenticated
-using (exists (select 1 from public.products p where p.id = product_id and p.status = 'published'));
+using (exists (select 1 from public.products p where p.id = product_id and p.status = 'active'));
 
 drop policy if exists "video_ads_member_all" on public.product_video_ads;
 create policy "video_ads_member_all" on public.product_video_ads
@@ -124,7 +129,7 @@ drop policy if exists "video_ads_public_read_ready" on public.product_video_ads;
 create policy "video_ads_public_read_ready" on public.product_video_ads
 for select to anon, authenticated
 using (status = 'ready'
-       and exists (select 1 from public.products p where p.id = product_id and p.status = 'published'));
+       and exists (select 1 from public.products p where p.id = product_id and p.status = 'active'));
 
 drop policy if exists "collections_member_all" on public.collections;
 create policy "collections_member_all" on public.collections
@@ -220,7 +225,14 @@ using (exists (select 1 from public.orders o where o.id = order_id and public.is
 -- carts and cart_items are keyed by an anonymous session_token, which a client could
 -- guess or enumerate; they are handled server-side against the token.
 -- payment_events and store_order_counters are financial infrastructure.
--- None of these five get a policy: RLS with no policy denies all client access.
+--
+-- None of these five gets a policy, so RLS returns no rows to a client. That alone
+-- is enough to prevent a leak, but it leaves the tables *reachable*: a client can
+-- still select from them and get an empty result, and the day someone adds a
+-- permissive policy for an unrelated reason, the data is public. Revoking the grant
+-- as well means two independent mistakes would have to line up. Verified against the
+-- live project: before this, anon could select from order_groups and receive zero
+-- rows; after it, the select is refused outright.
 
 -- ============================================================
 -- Grants
@@ -230,3 +242,29 @@ using (exists (select 1 from public.orders o where o.id = order_id and public.is
 grant usage on schema public to anon, authenticated;
 grant select on all tables in schema public to anon;
 grant select, insert, update, delete on all tables in schema public to authenticated;
+
+-- Applied after the blanket grants above, which would otherwise re-open them.
+revoke all on public.order_groups from anon, authenticated;
+revoke all on public.carts from anon, authenticated;
+revoke all on public.cart_items from anon, authenticated;
+revoke all on public.payment_events from anon, authenticated;
+revoke all on public.store_order_counters from anon, authenticated;
+
+-- stores and subscriptions are deliberately excluded from the blanket grant above.
+-- They hold stripe_account_id, subscription_id and credit balances, which need
+-- column-level restriction that a table-wide grant cannot express;
+-- 05_stores_policies.sql owns their privileges.
+--
+-- Re-revoking here matters: without it, re-running this file on its own would
+-- silently re-widen those two tables to every column, and nothing would fail to
+-- announce it. With it, running 01 alone leaves them closed until 05 reopens the
+-- three public columns — the storefront breaks loudly rather than leaking quietly.
+do $$
+begin
+  if to_regclass('public.stores') is not null then
+    revoke all on public.stores from anon, authenticated;
+  end if;
+  if to_regclass('public.subscriptions') is not null then
+    revoke all on public.subscriptions from anon, authenticated;
+  end if;
+end $$;

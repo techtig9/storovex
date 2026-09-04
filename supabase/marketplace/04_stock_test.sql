@@ -8,6 +8,9 @@ begin if not cond then raise exception 'ASSERTION FAILED: %', msg; end if; end; 
 reset role;
 delete from public.stock_reservations where variant_id = 'cccc1111-0000-0000-0000-00000000cccc';
 delete from public.product_variants where id = 'cccc1111-0000-0000-0000-00000000cccc';
+insert into public.stores(id,name,slug) values
+  ('a0000000-0000-0000-0000-00000000000a','Merchant A','merchant-a')
+on conflict (id) do nothing;
 insert into public.product_variants(id,product_id,store_id,sku,price,stock_quantity)
 values('cccc1111-0000-0000-0000-00000000cccc', null, 'a0000000-0000-0000-0000-00000000000a',
        'STOCK-TEST', 10.00, 10);

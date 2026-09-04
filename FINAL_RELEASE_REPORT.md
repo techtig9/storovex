@@ -2,6 +2,7 @@
 
 Date: 2026-09-04
 Branch: `claude/storovex-audit-plan-19xkwt`
+Live project: `vjlarglyifnbpqcpxoxd`
 
 ---
 
@@ -9,142 +10,210 @@ Branch: `claude/storovex-audit-plan-19xkwt`
 
 | Gate | Result |
 |---|---|
-| `tsc --noEmit` | **0 errors** |
-| `next lint --max-warnings=0` | **clean** |
-| `jest` | **5 suites, 106 tests, all pass** |
-| `next build` with an empty environment | **succeeds** |
-| Local database suites | RLS isolation, storefront isolation, draft inheritance, stock reservation — **all pass** |
-| Browser, 5 viewports × 3 pages | **0 horizontal overflow, 0 console errors** |
-| `jest-axe` | **0 violations** |
+| `tsc --noEmit` | 0 errors |
+| `next lint --max-warnings=0` | clean |
+| `jest` | 6 suites, **114 tests**, all pass |
+| `next build` with an empty environment | succeeds |
+| Database scripts, clean-slate rebuild | 9 scripts apply in order, both suites pass |
+| **Live isolation probe** | **10/10 pass** |
+| **Live RPC privilege probe** | **8/8 pass** |
+| Supabase security advisor | all anonymous-execute warnings cleared |
+| Browser, 5 viewports × 3 pages | 0 horizontal overflow, 0 console errors |
+| `jest-axe` | 0 violations |
 
-**Every database result above is against a local reconstruction of the live schema,
-not the live project.** That distinction matters and is not hedging: see §4.
-
----
-
-## 1. What exists
-
-### Foundation (unchanged since the earlier phases, all still passing)
-Auth — signup, login, logout, password reset, OAuth callback, `middleware.ts` route
-protection, open-redirect guard, anti-enumeration responses. The `withApi` wrapper —
-method and content-type guards, body size caps, Postgres-backed rate limiting,
-security headers, error handling that never leaks internals. Deferred credentials,
-`GET /api/health`, and a live integration preflight. The Tailwind design system: 22
-components, dark/light/high-contrast themes, verified accessibility.
-
-### Database security (Phase A — written, tested locally, **not applied**)
-30 RLS policies. Merchants scoped through `store_team_members`; anonymous shoppers
-see published products, their variants, images, ready video ads, collections and
-categories; eight financial and cross-store tables are server-only. `search_path`
-pinned on all six of the owner's existing functions. Stock reservations now expire.
-
-### Commerce (Phases B and C)
-Money in integer minor units throughout. Pricing, discount validation that reports
-*why* it refused, and totals arithmetic in one place. Checkout that reserves stock
-before writing an order and releases everything on failure. Stripe Connect: one
-payment intent per store, platform fee deducted in transit, refunds reversing both
-transfer and fee. A webhook idempotent on `stripe_event_id`. Products API with
-full-text search and delta-based stock adjustment.
-
-### AI (Phase D)
-Credit metering built on the owner's existing `try_decrement_credits` and
-`refund_credits` rather than replacing them, with `credit_usage` as the audit trail
-and a status guard so a retry cannot refund twice. Video ad generation driven off
-`product_video_ads.status`, claimed conditionally so two workers cannot generate the
-same ad. An assistant grounded in the merchant's real catalogue, ordered by the
-`sequence` column rather than timestamps.
-
-### Storefront (Phase E)
-Public per-store storefront and product pages, reading through the anon client so RLS
-is what decides visibility. Anonymous basket keyed by a browser-held token.
-Per-product metadata and Open Graph tags.
-
-### Analytics (Phase F)
-Merchant analytics computed from real orders: GMV and platform revenue kept separate,
-average order value, refund rate, period-over-period comparison, top products merged
-by snapshotted title.
+The live probes insert fixtures, assert, and roll back. Verified afterwards: every
+table still holds 0 rows.
 
 ---
 
-## 2. Decisions worth knowing
+## 1. The incident is repaired
 
-- **Money never touches a float.** `19.99 * 100` is `1998.9999…` in binary floating
-  point; truncating loses a cent on every order. The platform fee rounds **down**,
-  because rounding up takes more than the agreed rate out of someone else's sale.
-- **A failed checkout releases every reservation it took.** A partially fulfilled
-  basket is worse than a failed one: the shopper is charged for part of what they
-  wanted and told nothing about the rest.
-- **Refunds reverse the platform fee too.** Keeping a cut of a cancelled sale leaves
-  the merchant out of pocket for a sale that never happened.
-- **Variants and images inherit visibility from their product**, so an unpublished
-  product cannot leak its price through a variant.
-- **`order_groups` is server-only even for merchants** — it spans stores, so a
-  merchant reading it would learn their customer also bought from a competitor.
-- **Discounts have no public read**, or anyone could enumerate every code.
-- **Stock is exposed to shoppers as a boolean**, not a count: publishing exact
-  inventory tells competitors your sales volume.
-- **Analytics refuse impossible inputs** and return `null` rather than `Infinity` for
-  growth from zero. A metric that silently divides by zero is worse than an absent
-  one, because somebody will act on it.
+`stores` and `subscriptions` — dropped on 2026-09-04 by a reset script of mine —
+are back, with all **14 foreign keys** restored and RLS enabled. The two credit
+functions that had been silently referencing missing tables work again.
 
----
+The restored definition is **not the original**. `stores` had 15 columns; this one
+has 7, and every one is derived from evidence that survived the drop rather than
+guessed:
 
-## 3. Bugs found by testing, not by reading
+| Column | Why it must exist |
+|---|---|
+| `stores.id` | 14 tables carry a `store_id` that pointed here |
+| `stores.name` | the assistant reads it for prompt grounding |
+| `stores.slug` | the storefront resolves `/s/<slug>` through it |
+| `stores.stripe_account_id` | checkout reads it to route the Connect payment |
+| `stores.subscription_id` | no table carries `subscription_id`, so the link lived here |
+| `subscriptions.id`, `.credits_remaining` | both surviving credit functions read and write them |
 
-1. **Google reports an invalid API key as HTTP 400, not 401** — found by probing the
-   live API. Classification was calling a misconfigured key a malformed request.
-2. **`el?.focus() ?? panel?.focus()`** — `focus()` returns `undefined`, so the
-   fallback always ran and pulled focus back out of the dialog.
-3. **A modal effect depending on `onClose`** re-ran every render, firing its
-   focus-restoring cleanup at the wrong times.
-4. **`CardTitle`, `EmptyState` and `ErrorState` hardcoded `h3`**, producing real
-   heading-order violations under a page `h1`. Caught by axe, twice.
-5. **`aria-label` on a bare `div`** in the toast viewport — prohibited ARIA.
-6. **Light-mode semantic colours failed contrast** at 2.2–3.8:1 against white.
-7. **`get diagnostics ok = row_count > 0`** — invalid PL/pgSQL, found only by
-   executing it.
+`owner_id` and `created_at` are conventional additions. **Whatever else the
+original held is still missing** and must be added when the real schema surfaces.
+The restore script is `IF NOT EXISTS` throughout, so running it against a project
+that already has the real tables changes nothing.
 
 ---
 
-## 4. What is not verified, and what is not built
+## 2. Two bugs that would have shipped a dead product
 
-**Not applied to the live database.** `stores` and `subscriptions` remain missing
-after my reset script destroyed them (`INCIDENT_2026-09-04_schema_reset.md`). The
-backup restore did not take effect. Until the owner supplies the original schema SQL,
-every database claim here rests on a local reconstruction, and two columns the code
-assumes — `stores.slug` and `stores.stripe_account_id` — are **inferred, not known**.
+Running against the live database — not the local copy — turned up mismatches
+between my code and the real schema. Two were fatal and silent:
 
-**No live third-party call has succeeded.** Stripe, Resend and the AI providers are
-exercised against injected responses shaped like their documented APIs. Nothing has
-been charged, sent or generated.
+**Products.** Every storefront query filtered `status = 'published'`.
+`products_status_check` allows `draft | active | archived`. There is no
+`'published'`. The catalogue would have returned **nothing, forever**, and looked
+like an empty shop rather than a bug.
+
+**Team roles.** `is_store_admin()` checked for `'owner'` or `'admin'`.
+`store_team_members_role_check` allows `manager | staff`. No row could hold those
+values, so every admin-gated policy denied **everyone, including the real owner**.
+
+Both passed typecheck, lint, 106 unit tests and a production build.
+
+Three more of the same kind: `credit_usage.feature` was priced against four
+invented names where the constraint lists six real ones; video ads used a
+`'generating'` state that does not exist; orders were written as `'pending'`
+instead of `'pending_payment'`.
+
+**Root cause.** My local test fixture declared every status and role column as
+bare `text` with no CHECK constraint, so it accepted vocabulary the real database
+rejects. A fixture more permissive than production does not merely fail to catch
+bugs — it manufactures confidence in them. All 15 live CHECK constraints are now
+copied into the fixture verbatim, and `schema-vocabulary.test.ts` asserts the
+code's vocabulary against them.
+
+Two features I had costed — product copy and image generation — are **absent from
+the live feature list, and I removed them.** The database is saying the product
+does not offer them.
+
+---
+
+## 3. A vulnerability I introduced, found and closed
+
+Supabase exposes every `public` function at `/rest/v1/rpc/<name>`, callable by
+anyone holding the anon key — a value shipped to every browser. Four of the
+functions I added in Phase A were `SECURITY DEFINER`, so they bypassed RLS
+entirely:
+
+- **`reserve_stock_with_expiry`** — an anonymous caller could reserve a store's
+  entire inventory in a loop and hold it. No account, no purchase, no trace beyond
+  the stock reaching zero. **Verified: as `anon` I drained all 100 units.**
+- **`release_reservation` / `release_cart_reservations`** — free another shopper's
+  held stock mid-checkout.
+- **`sweep_expired_reservations`** — a scheduler job, on the public internet.
+
+All are now revoked; the live probe confirms each is refused for both anonymous
+and signed-in callers while the server still works.
+
+**The fix was wrong the first time, and the way it was wrong is worth recording.**
+I revoked `EXECUTE` from `anon` and `authenticated`. PostgreSQL grants `EXECUTE`
+on every function to `PUBLIC` by default, and those roles inherit it from there —
+so the revoke removed a grant they never separately held and **changed nothing**.
+I then watched the test suite pass and wrote a comment claiming the behaviour was
+verified. It was passing on a grant that was still in place. The probe that
+reserved 100 units is what exposed both the vulnerability and my false claim.
+
+A test that passes after a change proves nothing until you confirm the change took
+effect.
+
+The same probe then showed the opposite of what I had written: with the revoke
+genuinely applied, merchant queries failed with `permission denied for function
+is_store_member`, because an RLS policy expression **is** evaluated with the
+calling role's privileges. The three predicate functions are granted back to
+`authenticated` for that reason, and remain closed to `anon`.
+
+---
+
+## 4. What is live now
+
+25 tables, **36 policies**, 14 foreign keys, RLS on everything.
+
+Proven on the live database:
+
+- the storefront resolves a store by slug, and sees active products but not drafts
+- a draft product's variants and prices stay hidden
+- `stripe_account_id` and `subscription_id` are unreadable by any client —
+  enforced with **column grants**, since a row policy cannot restrict columns
+- credit balances, spend rows and unfinished video ads are not public
+- discount codes are not enumerable
+- six financial tables are **unreachable**, not merely empty — RLS returns no rows
+  *and* the grant is revoked, so two independent mistakes would have to line up
+
+---
+
+## 5. Deliberate exceptions in the advisor output
+
+- **7 × `rls_enabled_no_policy` (INFO)** — intentional. These are the server-only
+  tables; no policy plus no grant is the strongest position, not a gap.
+- **3 × `authenticated_security_definer` (WARN)** — required. Revoke these and
+  every merchant read fails. They answer only about the caller's own `auth.uid()`.
+- **`pg_trgm` in `public` (WARN)** — pre-existing, and the full-text index depends
+  on it. Moving it risks the search index; left alone deliberately.
+- **Leaked password protection disabled (WARN)** — **worth enabling.** It is a
+  dashboard toggle (Auth → Policies) that checks new passwords against
+  HaveIBeenPwned. I cannot set it from here.
+
+---
+
+## 6. One change to your schema, named explicitly
+
+`06_widen_status_vocabulary.sql` widens two CHECK constraints you wrote:
+
+- `credit_usage.status` gains `reserved` and `refunded`
+- `product_video_ads.status` gains `pending`
+
+Widening a CHECK can never reject an existing row, so it cannot fail on live data.
+It is still your schema, so it is isolated in its own file with **its rollback SQL
+written at the bottom**.
+
+Why: `completed | failed` are both terminal, written after the work finishes.
+Credits are decremented *before* the AI call, so a crash in between leaves the
+balance reduced with no record of what took it. `reserved` is the state between
+the charge and the outcome; `refunded` is what makes giving credits back
+idempotent, so two concurrent retries cannot both pay out. For video ads,
+`pending` gives the atomic claim something to transition from — without it, two
+workers can generate and charge for the same ad.
+
+Everything else applied is additive.
+
+---
+
+## 7. What is not done
+
+**Not verified anywhere:** no live Stripe call has been made. Stripe, Resend and
+the AI providers are exercised against injected responses shaped like their
+documented APIs. Nothing has been charged, sent or generated.
 
 **Not built:**
-- The merchant UI for products, orders, discounts and the AI assistant. The APIs
+
+- **Merchant UI** for products, orders, discounts and the AI assistant. The APIs
   exist and are tested; the screens do not.
-- The visual store builder. This is the largest single remaining piece.
-- Cart and checkout **pages** — the API and the add-to-basket control exist, the
-  basket and payment screens do not.
+- **The visual store builder** — the largest remaining piece.
+- **Cart and checkout pages.** The API and the add-to-basket control exist; the
+  basket and payment screens do not, so no shopper can complete a purchase.
 - Fulfilment, shipping and refund flows beyond the webhook status transitions.
-- Admin console, structured logging with request IDs, and error tracking.
-- Transactional email. The Paddle-era templates were retired with the photography
+- Admin console; structured logging with request IDs; error tracking.
+- Transactional email — the Paddle-era templates were retired with the photography
   domain and commerce equivalents have not been written.
 - Legal pages.
+- `src/core/storage/uploadService.ts` writes to a `file_assets` table that **does
+  not exist** in this project. It is left over from the photography codebase and
+  will fail if called.
 
 ---
 
-## 5. Honest state
+## 8. Honest state
 
-The backend is in good shape: the commerce, credit and payment logic is carefully
-reasoned and thoroughly tested at the unit level, and the security model is written
-and proven against a faithful local copy of the schema.
+The database is now in genuinely good shape, and that claim rests on probes run
+against the live project rather than a local copy. The commerce, credit and
+payment logic is carefully reasoned and well tested at the unit level.
 
-What it is not is a running product. No screen exists for a merchant to add a product
-or view an order, no shopper can complete a purchase through the UI, and none of it
-has touched the real database or a real payment.
+It is not a running product. No screen exists for a merchant to add a product or
+view an order, no shopper can complete a purchase through the UI, and no real
+payment has been processed.
 
-Two things unblock everything else: **the `stores` and `subscriptions` SQL**, and a
-**Stripe test key**. With those, the next session can apply the security work, run
-every suite against the real project, and put a real payment through in test mode.
+Two things unblock the rest: **the original `stores` and `subscriptions` column
+list**, so the restored tables can be completed, and a **Stripe test key**, so a
+payment can be put through end to end. The next substantial build is the merchant
+UI.
 
-I am not rating this production-ready. It is a well-tested foundation with a
-substantial amount of interface still to build.
+I am not rating this production-ready. It is a well-tested, now genuinely secured
+foundation with a substantial amount of interface still to build.

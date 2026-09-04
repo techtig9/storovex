@@ -15,7 +15,7 @@ const patchSchema = z.discriminatedUnion("action", [
     storeId: uuid.optional(),
     title: z.string().trim().min(1).max(200).optional(),
     description: z.string().max(20000).optional(),
-    status: z.enum(["draft", "published", "archived"]).optional(),
+    status: z.enum(["draft", "active", "archived"]).optional(),
   }),
   z.object({
     action: z.literal("add_variant"),

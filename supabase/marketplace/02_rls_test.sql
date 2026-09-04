@@ -30,20 +30,30 @@ delete from public.products where store_id in
 delete from public.store_team_members where store_id in
   ('a0000000-0000-0000-0000-00000000000a','b0000000-0000-0000-0000-00000000000b');
 delete from public.carts where session_token = 'tok-shopper';
+delete from public.stores where id in
+  ('a0000000-0000-0000-0000-00000000000a','b0000000-0000-0000-0000-00000000000b');
 
 insert into auth.users(id,email) values
   ('11111111-1111-1111-1111-11111111111a','merchant-a@example.com'),
   ('22222222-2222-2222-2222-22222222222b','merchant-b@example.com')
 on conflict (id) do nothing;
 
+-- The two stores the fixtures hang off. These must exist before anything
+-- carrying a store_id: the restored foreign keys enforce it, and an earlier
+-- version of this test only passed because those keys were missing.
+insert into public.stores(id,name,slug) values
+  ('a0000000-0000-0000-0000-00000000000a','Merchant A','merchant-a'),
+  ('b0000000-0000-0000-0000-00000000000b','Merchant B','merchant-b')
+on conflict (id) do nothing;
+
 insert into public.store_team_members(store_id,user_id,role) values
-  ('a0000000-0000-0000-0000-00000000000a','11111111-1111-1111-1111-11111111111a','owner'),
-  ('b0000000-0000-0000-0000-00000000000b','22222222-2222-2222-2222-22222222222b','owner');
+  ('a0000000-0000-0000-0000-00000000000a','11111111-1111-1111-1111-11111111111a','manager'),
+  ('b0000000-0000-0000-0000-00000000000b','22222222-2222-2222-2222-22222222222b','manager');
 
 -- Merchant B's data. Merchant A must never see any of it.
 insert into public.products(id,store_id,title,status) values
   ('bbbb1111-0000-0000-0000-00000000bbbb','b0000000-0000-0000-0000-00000000000b','B Secret Draft','draft'),
-  ('bbbb2222-0000-0000-0000-00000000bbbb','b0000000-0000-0000-0000-00000000000b','B Published Item','published');
+  ('bbbb2222-0000-0000-0000-00000000bbbb','b0000000-0000-0000-0000-00000000000b','B Published Item','active');
 insert into public.product_variants(id,product_id,store_id,sku,price,stock_quantity) values
   ('bbbb3333-0000-0000-0000-00000000bbbb','bbbb2222-0000-0000-0000-00000000bbbb',
    'b0000000-0000-0000-0000-00000000000b','B-SKU-1',49.99,10);
@@ -57,14 +67,14 @@ insert into public.order_items(order_id,variant_id,title_snapshot,price_snapshot
 insert into public.payment_events(store_id,order_id,stripe_event_id,type) values
   ('b0000000-0000-0000-0000-00000000000b','bbbb4444-0000-0000-0000-00000000bbbb','evt_secret','payment_intent.succeeded');
 insert into public.credit_usage(store_id,feature,credits_spent,status) values
-  ('b0000000-0000-0000-0000-00000000000b','video_ad',25,'committed');
+  ('b0000000-0000-0000-0000-00000000000b','product_video_ad',25,'completed');
 insert into public.audit_logs(store_id,actor_id,action) values
   ('b0000000-0000-0000-0000-00000000000b','22222222-2222-2222-2222-22222222222b','product.deleted');
 insert into public.carts(session_token,status) values ('tok-shopper','open');
 
 -- Merchant A's own product, to prove access is scoped rather than simply broken.
 insert into public.products(id,store_id,title,status) values
-  ('aaaa1111-0000-0000-0000-00000000aaaa','a0000000-0000-0000-0000-00000000000a','A Own Product','published');
+  ('aaaa1111-0000-0000-0000-00000000aaaa','a0000000-0000-0000-0000-00000000000a','A Own Product','active');
 
 -- ============================================================
 -- Act as merchant A
@@ -96,21 +106,34 @@ select public.t_assert((select count(*) from public.store_team_members
   'another store''s team must be invisible');
 
 -- Server-only tables: closed to every client, not merely scoped.
-select public.t_assert((select count(*) from public.payment_events)=0,
-  'payment_events must be server-only');
-select public.t_assert((select count(*) from public.carts)=0,
-  'carts must be server-only: session_token is guessable');
-select public.t_assert((select count(*) from public.order_groups)=0,
-  'order_groups spans stores and must be server-only');
-select public.t_assert((select count(*) from public.store_order_counters)=0,
-  'store_order_counters must be server-only');
+--
+-- The assertion is that the select is *refused*, not that it returns nothing.
+-- Those are different guarantees: an empty result means the current policy set
+-- happens to exclude the caller, while a refusal means the privilege is not there
+-- at all and no future policy can hand it over by accident. These four tables hold
+-- payment records, guessable cart tokens, cross-store order groups and the order
+-- number sequence, so they get the stronger one.
+do $$
+declare t text; open_tables text[] := '{}';
+begin
+  foreach t in array array['payment_events','carts','cart_items','order_groups','store_order_counters'] loop
+    begin
+      execute format('select 1 from public.%I limit 1', t);
+      open_tables := open_tables || t;
+    exception when insufficient_privilege then null;
+    end;
+  end loop;
+  perform public.t_assert(cardinality(open_tables) = 0,
+    format('these must be unreachable by a client, not merely empty: %s',
+           array_to_string(open_tables, ', ')));
+end $$;
 
 do $$
 declare denied boolean;
 begin
   begin
     insert into public.products(store_id,title,status)
-    values('b0000000-0000-0000-0000-00000000000b','Injected','published');
+    values('b0000000-0000-0000-0000-00000000000b','Injected','active');
     denied := false;
   exception when others then denied := true; end;
   perform public.t_assert(denied,'writing a product into another store must be denied');
@@ -161,7 +184,7 @@ declare denied boolean;
 begin
   begin
     insert into public.products(store_id,title,status)
-    values('a0000000-0000-0000-0000-00000000000a','Anon Injected','published');
+    values('a0000000-0000-0000-0000-00000000000a','Anon Injected','active');
     denied := false;
   exception when others then denied := true; end;
   perform public.t_assert(denied,'an anonymous visitor must not write products');

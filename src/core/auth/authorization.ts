@@ -1,11 +1,16 @@
 /**
  * Marketplace roles, as stored in store_team_members.role.
  *
- * A member can run the shop day to day. An admin can additionally manage the team.
- * Only an owner can touch billing or delete the store, because those are the two
- * actions nobody else should be able to take on someone else's business.
+ * The database constrains this column to exactly "manager" and "staff", so those
+ * are the only two roles that can exist. An earlier version of this file invented
+ * owner/admin/member; none of them could ever have been stored, which would have
+ * made every role check silently false.
+ *
+ * Staff run the shop day to day. Managers additionally hold the team, billing and
+ * store-deletion permissions — the actions nobody but the business owner should be
+ * able to take on someone else's business.
  */
-export type Role = "owner" | "admin" | "member";
+export type Role = "manager" | "staff";
 
 export type Permission =
   | "store:read" | "store:write" | "store:delete"
@@ -17,21 +22,16 @@ export type Permission =
   | "ai:use";
 
 const MATRIX: Record<Role, Permission[]> = {
-  owner: [
+  manager: [
     "store:read", "store:write", "store:delete",
     "products:read", "products:write",
     "orders:read", "orders:fulfil", "orders:refund",
     "discounts:write", "channels:write",
     "team:manage", "billing:read", "billing:write", "ai:use",
   ],
-  admin: [
-    "store:read", "store:write",
-    "products:read", "products:write",
-    "orders:read", "orders:fulfil", "orders:refund",
-    "discounts:write", "channels:write",
-    "team:manage", "billing:read", "ai:use",
-  ],
-  member: [
+  // Staff deliberately cannot refund, manage the team, or see billing: those move
+  // money or change who has access, and a shop assistant needs neither.
+  staff: [
     "store:read", "products:read", "products:write",
     "orders:read", "orders:fulfil", "ai:use",
   ],
@@ -46,5 +46,5 @@ export function assertCan(role: Role, permission: Permission) {
 }
 
 export function isValidRole(value: string): value is Role {
-  return value === "owner" || value === "admin" || value === "member";
+  return value === "manager" || value === "staff";
 }

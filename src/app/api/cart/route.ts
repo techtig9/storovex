@@ -60,7 +60,7 @@ export const POST = withApi(
       .eq("id", parsed.data.variantId).maybeSingle();
 
     const product = variant?.products as unknown as {status: string} | null;
-    if (!variant || product?.status !== "published") {
+    if (!variant || product?.status !== "active") {
       return apiError(404, "VARIANT_UNAVAILABLE", "That item isn't available.");
     }
     if ((variant.stock_quantity as number) < parsed.data.quantity) {

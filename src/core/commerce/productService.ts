@@ -10,7 +10,9 @@ import {toMinorUnits, toDecimalString, type Money} from "./money";
  * order that matters: the database decides, the application agrees.
  */
 
-export type ProductStatus = "draft" | "published" | "archived";
+/** Live products_status_check allows exactly these three. "published" is not one
+ * of them, so every storefront query written against it matched nothing. */
+export type ProductStatus = "draft" | "active" | "archived";
 
 export type VariantInput = {
   sku: string;

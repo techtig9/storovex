@@ -50,7 +50,7 @@ export async function loadCart(sessionToken: string): Promise<{cartId: string; l
 
     // A merchant can unpublish between adding to cart and checking out. Selling an
     // unpublished product would be a real bug, so this refuses rather than proceeds.
-    if (variant.products?.status !== "published") {
+    if (variant.products?.status !== "active") {
       throw new CheckoutError("PRODUCT_UNAVAILABLE", {title: variant.products?.title});
     }
 
@@ -177,7 +177,7 @@ export async function createOrderGroup(input: {
         store_id: store.storeId,
         order_number: orderNumber,
         email: input.email,
-        status: "pending",
+        status: "pending_payment",
         subtotal: toDecimalString(store.totals.subtotal),
         discount_total: toDecimalString(store.totals.discountTotal),
         shipping_total: toDecimalString(store.totals.shippingTotal),
