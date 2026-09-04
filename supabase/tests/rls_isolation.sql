@@ -20,9 +20,34 @@ begin if not cond then raise exception 'ASSERTION FAILED: %', msg; end if; end; 
 -- Fixtures (as superuser / service role)
 -- ============================================================
 reset role;
+
+-- Reset first so the file is re-runnable against a database it has already touched.
+delete from public.notifications where store_id in
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+delete from public.job_queue where store_id='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+delete from public.email_events where store_id='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+delete from public.security_events where store_id='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+delete from public.ai_generation_requests where store_id='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+delete from public.subscriptions where store_id='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+delete from public.credit_ledger where account_id='cccccccc-cccc-cccc-cccc-cccccccccccc';
+delete from public.credit_accounts where id='cccccccc-cccc-cccc-cccc-cccccccccccc';
+delete from public.projects where store_id='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+delete from public.billing_webhook_events where id='evt_pii';
+delete from public.email_suppressions where email='bounced@example.com';
+delete from public.admin_audit_events where admin_user_id='22222222-2222-2222-2222-222222222222';
+-- These carry state across runs and would otherwise make the later assertions fail:
+-- an already-exhausted rate bucket, a worker with no free slots, a drained queue.
+delete from public.api_rate_limit_buckets where bucket_key='test:bucket';
+delete from public.worker_capacity where worker_id='w1';
+delete from public.store_members where store_id in
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+delete from public.stores where id in
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+
 insert into auth.users(id,email) values
   ('11111111-1111-1111-1111-111111111111','alice@example.com'),
-  ('22222222-2222-2222-2222-222222222222','bob@example.com');
+  ('22222222-2222-2222-2222-222222222222','bob@example.com')
+on conflict (id) do nothing;
 
 select public.t_assert(
   (select count(*) from public.profiles

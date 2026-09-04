@@ -1,68 +1,74 @@
-import React, {useState} from "react";
-import {estimateCredits,type GenerationType,type Quality} from "../../core/generation/catalog";
+"use client";
+import React from "react";
+import {Select} from "@/components/ui/Input";
+import {Button} from "@/components/ui/Button";
+import {estimateCredits, type GenerationType, type Quality} from "@/core/generation/catalog";
 
-const TYPE_OPTIONS:{value:GenerationType;label:string}[]=[
- {value:"product_hero",label:"Product hero shot"},
- {value:"product_lifestyle",label:"Lifestyle scene"},
- {value:"campaign",label:"Campaign set"},
- {value:"collection",label:"Collection layout"},
- {value:"banner",label:"Banner"},
- {value:"social_creative",label:"Social creative"},
+const TYPES: {value: GenerationType; label: string}[] = [
+  {value: "product_hero", label: "Product hero shot"},
+  {value: "product_lifestyle", label: "Lifestyle scene"},
+  {value: "campaign", label: "Campaign set"},
+  {value: "collection", label: "Collection layout"},
+  {value: "banner", label: "Storefront banner"},
+  {value: "social_creative", label: "Social creative"},
 ];
-const QUALITY_OPTIONS:{value:Quality;label:string}[]=[
- {value:"draft",label:"Draft"},
- {value:"standard",label:"Standard"},
- {value:"high",label:"High"},
+const QUALITIES: {value: Quality; label: string}[] = [
+  {value: "draft", label: "Draft — fastest, lowest cost"},
+  {value: "standard", label: "Standard"},
+  {value: "high", label: "High — best detail"},
 ];
 
-export function GenerationForm(props:{onSubmit:(input:{type:GenerationType;quality:Quality;count:number})=>void;submitting:boolean}){
- const [type,setType]=useState<GenerationType>("product_hero");
- const [quality,setQuality]=useState<Quality>("standard");
- const [count,setCount]=useState(1);
- const estimated=estimateCredits(type,quality,count);
+export function GenerationForm({
+  onSubmit, submitting, creditsAvailable,
+}: {
+  onSubmit: (input: {type: GenerationType; quality: Quality; count: number}) => void;
+  submitting: boolean;
+  creditsAvailable?: number;
+}) {
+  const [type, setType] = React.useState<GenerationType>("product_hero");
+  const [quality, setQuality] = React.useState<Quality>("standard");
+  const [count, setCount] = React.useState(1);
 
- return (
-  <form
-   onSubmit={e=>{e.preventDefault();props.onSubmit({type,quality,count});}}
-   style={{display:"flex",flexDirection:"column",gap:"var(--space-4)",maxWidth:420}}
-  >
-   <div>
-    <label htmlFor="gen-type" style={{display:"block",fontSize:13,marginBottom:"var(--space-1)"}}>What are you generating?</label>
-    <select id="gen-type" value={type} onChange={e=>setType(e.target.value as GenerationType)}
-     style={{width:"100%",padding:"var(--space-2)",border:"1px solid var(--border)",borderRadius:"var(--radius-sm)",background:"var(--surface)",color:"var(--ink)"}}>
-     {TYPE_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
-   </div>
-   <div>
-    <label htmlFor="gen-quality" style={{display:"block",fontSize:13,marginBottom:"var(--space-1)"}}>Quality</label>
-    <select id="gen-quality" value={quality} onChange={e=>setQuality(e.target.value as Quality)}
-     style={{width:"100%",padding:"var(--space-2)",border:"1px solid var(--border)",borderRadius:"var(--radius-sm)",background:"var(--surface)",color:"var(--ink)"}}>
-     {QUALITY_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
-   </div>
-   <div>
-    <label htmlFor="gen-count" style={{display:"block",fontSize:13,marginBottom:"var(--space-1)"}}>How many</label>
-    <input id="gen-count" type="number" min={1} max={20} value={count}
-     onChange={e=>setCount(Math.max(1,Math.min(20,Number(e.target.value)||1)))}
-     style={{width:"100%",padding:"var(--space-2)",border:"1px solid var(--border)",borderRadius:"var(--radius-sm)",background:"var(--surface)",color:"var(--ink)"}} />
-   </div>
-   <p style={{margin:0,fontFamily:"var(--font-mono)",fontSize:13,color:"var(--ink-muted)"}}>
-    Estimated cost: {estimated} credits
-   </p>
-   <button type="submit" disabled={props.submitting}
-    style={{
-     padding:"var(--space-3) var(--space-4)",
-     background:"var(--accent)",
-     color:"var(--accent-ink)",
-     border:"none",
-     borderRadius:"var(--radius-md)",
-     fontFamily:"var(--font-display)",
-     fontWeight:600,
-     cursor:props.submitting?"default":"pointer",
-     opacity:props.submitting?0.6:1,
-    }}>
-    {props.submitting?"Starting…":"Generate"}
-   </button>
-  </form>
- );
+  const estimated = estimateCredits(type, quality, count);
+  // Showing the cost before the click is what stops a user discovering the price
+  // only when they are told they cannot afford it.
+  const tooExpensive = typeof creditsAvailable === "number" && estimated > creditsAvailable;
+
+  return (
+    <form
+      className="space-y-5"
+      onSubmit={e => { e.preventDefault(); onSubmit({type, quality, count}); }}
+    >
+      <Select label="Shot type" value={type} onChange={e => setType(e.target.value as GenerationType)}>
+        {TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+      </Select>
+
+      <Select label="Quality" value={quality} onChange={e => setQuality(e.target.value as Quality)}>
+        {QUALITIES.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
+      </Select>
+
+      <Select
+        label="How many images" value={String(count)}
+        onChange={e => setCount(Number(e.target.value))}
+        hint="Each image costs credits. You're only charged for what's delivered."
+      >
+        {[1, 2, 4, 6, 8].map(n => <option key={n} value={n}>{n}</option>)}
+      </Select>
+
+      <div className="flex items-center justify-between rounded-md border border-line bg-surface-raised px-4 py-3">
+        <span className="text-sm text-ink-muted">Estimated cost</span>
+        <span className="text-base font-semibold tabular-nums">{estimated} credits</span>
+      </div>
+
+      {tooExpensive && (
+        <p role="alert" className="text-sm font-medium text-danger">
+          That&rsquo;s more than your {creditsAvailable} remaining credits. Reduce the count or quality.
+        </p>
+      )}
+
+      <Button type="submit" loading={submitting} loadingLabel="Starting…" disabled={tooExpensive} fullWidth size="lg">
+        Generate
+      </Button>
+    </form>
+  );
 }

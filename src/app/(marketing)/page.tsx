@@ -1,104 +1,122 @@
 import React from "react";
+import {Card} from "@/components/ui/Card";
+import {MarketingNav, MarketingFooter} from "@/components/marketing/Chrome";
 
-const FRAMES=[
- {tag:"f/2.8 · hero",note:"Clean product hero"},
- {tag:"f/4 · lifestyle",note:"In-context scene"},
- {tag:"f/5.6 · campaign",note:"Seasonal campaign"},
- {tag:"f/4 · collection",note:"Full collection grid"},
- {tag:"f/2.8 · banner",note:"Storefront banner"},
- {tag:"f/5.6 · social",note:"Social creative"},
+const SHOTS = [
+  {tag: "Hero", note: "Clean studio shot on a seamless background"},
+  {tag: "Lifestyle", note: "Your product in a real setting"},
+  {tag: "Campaign", note: "Seasonal creative with space for copy"},
+  {tag: "Collection", note: "Flat-lay grids for category pages"},
+  {tag: "Banner", note: "Wide storefront headers"},
+  {tag: "Social", note: "Square crops that hold up small"},
 ];
 
-const STEPS=[
- {frame:"01",title:"Upload",body:"Give it one reference photo of the product, taken however you can — phone, tripod, doesn't matter."},
- {frame:"02",title:"Direction",body:"Tell it the shot types and the mood: bright and minimal, warm and editorial, or your existing brand style."},
- {frame:"03",title:"Delivery",body:"Get back a full set, sized and ready for your product pages, ads, and social posts."},
+const STEPS = [
+  {n: "01", title: "Upload", body: "One reference photo of the product, taken however you can. A phone is fine."},
+  {n: "02", title: "Direct", body: "Choose the shot types and the mood — bright and minimal, warm and editorial, or your existing brand style."},
+  {n: "03", title: "Publish", body: "Get a full set back, sized for your product pages, ads and social posts."},
 ];
 
-export default function MarketingHomePage(){
- return (
-  <div data-theme="daylight" style={{background:"var(--bg)",color:"var(--ink)",minHeight:"100vh",fontFamily:"var(--font-body)"}}>
-   <a href="#main-content" className="skip-link">Skip to content</a>
-   <header style={{
-    display:"flex",alignItems:"center",justifyContent:"space-between",
-    padding:"var(--space-4) var(--space-8)",borderBottom:"1px solid var(--border)",
-   }}>
-    <span style={{fontFamily:"var(--font-display)",fontWeight:700,letterSpacing:"0.02em"}}>STOROVEX</span>
-    <nav aria-label="Site" style={{display:"flex",gap:"var(--space-6)",alignItems:"center",fontSize:14}}>
-     <a href="/pricing" style={{color:"var(--ink)",textDecoration:"none"}}>Pricing</a>
-     <a href="/login" style={{color:"var(--ink)",textDecoration:"none"}}>Log in</a>
-     <a href="/signup" style={{
-      background:"var(--accent)",color:"var(--accent-ink)",padding:"var(--space-2) var(--space-4)",
-      borderRadius:"var(--radius-md)",textDecoration:"none",fontWeight:600,
-     }}>Start free</a>
-    </nav>
-   </header>
+const FAQS = [
+  {q: "Do I need a studio or a photographer?", a: "No. Storovex works from a single reference photo — the kind you can take on a phone against a plain wall."},
+  {q: "Will it change what my product looks like?", a: "It shouldn't. Every generation instructs the model to preserve the product's real shape, colour and materials. Anything that comes back wrong costs you nothing — see the credits answer below."},
+  {q: "What happens if a generation fails?", a: "Your credits are refunded in full, automatically. You are only charged for images that are actually delivered."},
+  {q: "Can I cancel?", a: "Any time. Cancelling takes effect at the end of the period you have already paid for, and your generated images stay available."},
+];
 
-   <main id="main-content" tabIndex={-1}>
-    <section style={{padding:"var(--space-12) var(--space-8)",maxWidth:920}}>
-     <p style={{
-      fontFamily:"var(--font-mono)",fontSize:12,letterSpacing:"0.08em",textTransform:"uppercase",
-      color:"var(--accent)",margin:0,
-     }}>
-      One upload → full shoot
-     </p>
-     <h1 style={{
-      fontFamily:"var(--font-display)",fontWeight:600,fontSize:"clamp(32px, 5vw, 56px)",
-      lineHeight:1.05,margin:"var(--space-3) 0 0",maxWidth:760,
-     }}>
-      Your product, shot a dozen ways — without a studio.
-     </h1>
-     <p style={{fontSize:18,color:"var(--ink-muted)",maxWidth:560,margin:"var(--space-4) 0 0",lineHeight:1.5}}>
-      Upload one reference photo. Storovex generates hero shots, lifestyle scenes, and campaign
-      creative in your store&rsquo;s style — ready to publish, not just a first draft.
-     </p>
-     <div style={{display:"flex",gap:"var(--space-3)",marginTop:"var(--space-6)"}}>
-      <a href="/signup" style={{
-       background:"var(--accent)",color:"var(--accent-ink)",padding:"var(--space-3) var(--space-6)",
-       borderRadius:"var(--radius-md)",textDecoration:"none",fontWeight:600,fontFamily:"var(--font-display)",
-      }}>Start generating</a>
-      <a href="/pricing" style={{
-       border:"1px solid var(--border)",padding:"var(--space-3) var(--space-6)",
-       borderRadius:"var(--radius-md)",textDecoration:"none",color:"var(--ink)",fontWeight:600,
-      }}>See pricing</a>
-     </div>
-    </section>
+export default function MarketingHomePage() {
+  return (
+    <div className="min-h-screen bg-bg">
+      <a href="#main" className="skip-link">Skip to content</a>
+      <MarketingNav />
 
-    <section aria-label="Example output frames" style={{padding:"0 var(--space-8) var(--space-12)"}}>
-     <div style={{
-      display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))",gap:"var(--space-2)",
-      background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-lg)",padding:"var(--space-3)",
-     }}>
-      {FRAMES.map((f,i)=>(
-       <div key={f.tag} style={{
-        aspectRatio:"4 / 5",background:"var(--surface-2)",borderRadius:"var(--radius-md)",
-        display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"var(--space-2)",
-       }}>
-        <span style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--ink-muted)"}}>
-         frame {String(i+1).padStart(2,"0")} · {f.tag}
-        </span>
-        <span style={{fontSize:12,fontWeight:600}}>{f.note}</span>
-       </div>
-      ))}
-     </div>
-    </section>
+      <main id="main" tabIndex={-1}>
+        <section className="mx-auto w-full max-w-6xl px-4 pb-16 pt-16 sm:px-6 sm:pt-24 lg:px-8">
+          <p className="animate-fade-up text-xs font-semibold uppercase tracking-[0.12em] text-brand">
+            One upload, a full shoot
+          </p>
+          <h1 className="mt-4 max-w-3xl animate-fade-up text-4xl sm:text-5xl lg:text-6xl">
+            Your product, shot a dozen ways — without a studio.
+          </h1>
+          <p className="mt-5 max-w-xl animate-fade-up text-md text-ink-muted sm:text-lg">
+            Upload one reference photo. Storovex generates hero shots, lifestyle scenes and
+            campaign creative in your store&rsquo;s style — sized and ready to publish.
+          </p>
+          {/* Anchors rather than buttons: these navigate, and a keyboard user
+              expects Enter on a link to follow it. */}
+          <div className="mt-8 flex animate-fade-up flex-col gap-3 sm:flex-row">
+            <a
+              href="/signup"
+              className="inline-flex h-12 items-center justify-center rounded-lg bg-brand px-6 text-md font-semibold text-brand-contrast transition-colors duration-fast hover:bg-brand-hover"
+            >
+              Start generating
+            </a>
+            <a
+              href="/pricing"
+              className="inline-flex h-12 items-center justify-center rounded-lg border border-line-strong px-6 text-md font-semibold text-ink transition-colors duration-fast hover:bg-surface-raised"
+            >
+              See pricing
+            </a>
+          </div>
+        </section>
 
-    <section aria-label="How it works" style={{padding:"var(--space-8) var(--space-8) var(--space-12)",borderTop:"1px solid var(--border)"}}>
-     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",gap:"var(--space-8)",maxWidth:920}}>
-      {STEPS.map(step=>(
-       <div key={step.frame}>
-        <span style={{fontFamily:"var(--font-mono)",fontSize:12,color:"var(--accent)"}}>Frame {step.frame}</span>
-        <h2 style={{fontFamily:"var(--font-display)",fontSize:20,margin:"var(--space-2) 0"}}>{step.title}</h2>
-        <p style={{fontSize:14,color:"var(--ink-muted)",lineHeight:1.5,margin:0}}>{step.body}</p>
-       </div>
-      ))}
-     </div>
-    </section>
-   </main>
+        <section aria-labelledby="shots-heading" className="mx-auto w-full max-w-6xl px-4 pb-20 sm:px-6 lg:px-8">
+          <h2 id="shots-heading" className="sr-only">What Storovex generates</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {SHOTS.map((s, i) => (
+              <Card key={s.tag} interactive className="p-5" style={{animationDelay: `${i * 60}ms`}}>
+                <div className="mb-4 aspect-[4/3] rounded-lg border border-line bg-surface-raised" aria-hidden="true" />
+                <p className="text-base font-semibold">{s.tag}</p>
+                <p className="mt-1 text-sm text-ink-muted">{s.note}</p>
+              </Card>
+            ))}
+          </div>
+        </section>
 
-   <footer style={{padding:"var(--space-6) var(--space-8)",borderTop:"1px solid var(--border)",fontSize:13,color:"var(--ink-muted)"}}>
-    Storovex — AI product photography for online stores.
-   </footer>
-  </div>
- );
+        <section aria-labelledby="how-heading" className="border-t border-line bg-surface">
+          <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 lg:px-8">
+            <h2 id="how-heading" className="text-3xl">How it works</h2>
+            <div className="mt-10 grid gap-8 sm:grid-cols-3">
+              {STEPS.map(s => (
+                <div key={s.n}>
+                  <span className="font-mono text-xs font-semibold text-brand">{s.n}</span>
+                  <h3 className="mt-2 text-lg">{s.title}</h3>
+                  <p className="mt-2 text-base text-ink-muted">{s.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="faq-heading" className="mx-auto w-full max-w-3xl px-4 py-20 sm:px-6 lg:px-8">
+          <h2 id="faq-heading" className="text-3xl">Questions</h2>
+          <dl className="mt-8 space-y-6">
+            {FAQS.map(f => (
+              <div key={f.q} className="border-b border-line pb-6 last:border-0">
+                <dt className="text-md font-semibold">{f.q}</dt>
+                <dd className="mt-2 text-base text-ink-muted">{f.a}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <section className="border-t border-line bg-surface">
+          <div className="mx-auto w-full max-w-3xl px-4 py-20 text-center sm:px-6">
+            <h2 className="text-3xl">Start with one product</h2>
+            <p className="mx-auto mt-3 max-w-lg text-md text-ink-muted">
+              See what a full set looks like for something you already sell.
+            </p>
+            <a
+              href="/signup"
+              className="mt-8 inline-flex h-12 items-center justify-center rounded-lg bg-brand px-6 text-md font-semibold text-brand-contrast transition-colors duration-fast hover:bg-brand-hover"
+            >
+              Create an account
+            </a>
+          </div>
+        </section>
+      </main>
+
+      <MarketingFooter />
+    </div>
+  );
 }

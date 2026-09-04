@@ -1,60 +1,99 @@
 "use client";
-import React, {useEffect, useState} from "react";
-import {AppShell} from "../../../components/shell/AppShell";
-import {KpiGrid,kpiCardsFromSummary} from "../../../components/dashboard/KpiGrid";
-import {ProjectContactSheet,type ProjectSummary} from "../../../components/dashboard/ProjectContactSheet";
-import {resolveTheme,type ThemeId} from "../../../core/theme/themeTokens";
-import {isSidebarCollapsedByDefault,breakpointForWidth} from "../../../core/ui/breakpoints";
-import {NAV_ITEMS} from "../../../components/shell/navItems";
+import React from "react";
+import {AppShell} from "@/components/shell/AppShell";
+import {MetricCard} from "@/components/ui/MetricCard";
+import {ProjectList, type ProjectSummary} from "@/components/dashboard/ProjectList";
+import {EmptyState, ErrorState} from "@/components/ui/States";
+import {Button} from "@/components/ui/Button";
 
-export default function DashboardPage(){
- const [theme,setTheme]=useState<ThemeId>(resolveTheme(typeof window!=="undefined"?window.localStorage.getItem("storovex-theme"):undefined));
- const [collapsed,setCollapsed]=useState(false);
- const [kpis,setKpis]=useState<{activationRatePct:number;generationSuccessRatePct:number;creditsRemainingPct:number}|null>(null);
- const [projects,setProjects]=useState<ProjectSummary[]|null>(null);
+type Kpis = {activationRatePct: number; generationSuccessRatePct: number; creditsRemainingPct: number};
+type Load<T> = {state: "loading"} | {state: "ready"; data: T} | {state: "error"};
 
- useEffect(()=>{
-  setCollapsed(isSidebarCollapsedByDefault(breakpointForWidth(window.innerWidth)));
-  const onResize=()=>setCollapsed(isSidebarCollapsedByDefault(breakpointForWidth(window.innerWidth)));
-  window.addEventListener("resize",onResize);
-  return ()=>window.removeEventListener("resize",onResize);
- },[]);
+export default function DashboardPage() {
+  const [kpis, setKpis] = React.useState<Load<Kpis>>({state: "loading"});
+  const [projects, setProjects] = React.useState<Load<ProjectSummary[]>>({state: "loading"});
 
- useEffect(()=>{
-  // No storeId: the server resolves the caller's store from their session. Sending
-  // the literal string "current" as an id, as this used to, could never match a UUID.
-  const ac=new AbortController();
-  fetch("/api/dashboard/kpis",{signal:ac.signal})
-   .then(r=>r.ok?r.json():Promise.reject(new Error("kpis")))
-   .then(b=>setKpis(b.data??null)).catch(()=>setKpis(null));
-  fetch("/api/projects",{signal:ac.signal})
-   .then(r=>r.ok?r.json():Promise.reject(new Error("projects")))
-   .then(b=>setProjects(b.data?.projects??[])).catch(()=>setProjects([]));
-  return ()=>ac.abort();
- },[]);
+  React.useEffect(() => {
+    const ac = new AbortController();
 
- function handleThemeChange(next:ThemeId){
-  setTheme(next);
-  window.localStorage.setItem("storovex-theme",next);
- }
+    // No storeId: the server resolves the caller's store from their session.
+    fetch("/api/dashboard/kpis", {signal: ac.signal})
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then(b => setKpis({state: "ready", data: b.data}))
+      .catch(e => { if (e.name !== "AbortError") setKpis({state: "error"}); });
 
- return (
-  <AppShell
-   items={NAV_ITEMS} activeId="dashboard" sidebarCollapsed={collapsed} storeName="Your store"
-   creditsRemaining={kpis?Math.round(kpis.creditsRemainingPct):0} theme={theme} onThemeChange={handleThemeChange}
-  >
-   <h1 style={{fontFamily:"var(--font-display)",fontSize:24,marginTop:0}}>Dashboard</h1>
-   {kpis?(
-    <KpiGrid cards={kpiCardsFromSummary(kpis)} />
-   ):(
-    <p role="status" style={{color:"var(--ink-muted)"}}>Loading your numbers…</p>
-   )}
-   <h2 style={{fontFamily:"var(--font-display)",fontSize:18,marginTop:"var(--space-8)"}}>Projects</h2>
-   {projects?(
-    <ProjectContactSheet projects={projects} onOpen={id=>{window.location.href=`/projects/${id}`;}} />
-   ):(
-    <p role="status" style={{color:"var(--ink-muted)"}}>Loading your projects…</p>
-   )}
-  </AppShell>
- );
+    fetch("/api/projects", {signal: ac.signal})
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then(b => setProjects({state: "ready", data: b.data?.projects ?? []}))
+      .catch(e => { if (e.name !== "AbortError") setProjects({state: "error"}); });
+
+    return () => ac.abort();
+  }, []);
+
+  return (
+    <AppShell
+      activeId="dashboard"
+      creditsRemaining={kpis.state === "ready" ? Math.round(kpis.data.creditsRemainingPct) : undefined}
+      headerActions={<Button size="sm" onClick={() => { window.location.href = "/generate"; }}>New generation</Button>}
+    >
+      <header className="mb-6">
+        <h1 className="text-3xl">Dashboard</h1>
+        <p className="mt-1 text-base text-ink-muted">How your store is using Storovex.</p>
+      </header>
+
+      <section aria-labelledby="kpi-heading" className="mb-10">
+        <h2 id="kpi-heading" className="sr-only">Key metrics</h2>
+        {kpis.state === "error" ? (
+          <ErrorState description="We couldn't load your numbers. Refresh to try again." />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <MetricCard
+              loading={kpis.state === "loading"}
+              label="Active projects"
+              value={kpis.state === "ready" ? `${kpis.data.activationRatePct}%` : "—"}
+              hint="Share of your projects currently active"
+            />
+            <MetricCard
+              loading={kpis.state === "loading"}
+              label="Generation success"
+              value={kpis.state === "ready" ? `${kpis.data.generationSuccessRatePct}%` : "—"}
+              hint="Completed generations as a share of all attempts"
+              tone={kpis.state === "ready" && kpis.data.generationSuccessRatePct < 80 ? "negative" : "neutral"}
+            />
+            <MetricCard
+              loading={kpis.state === "loading"}
+              label="Credits remaining"
+              value={kpis.state === "ready" ? `${kpis.data.creditsRemainingPct}%` : "—"}
+              hint="Of your plan's included credits this period"
+              tone={kpis.state === "ready" && kpis.data.creditsRemainingPct < 20 ? "negative" : "neutral"}
+            />
+          </div>
+        )}
+      </section>
+
+      <section aria-labelledby="projects-heading">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 id="projects-heading" className="text-xl">Projects</h2>
+        </div>
+
+        {projects.state === "loading" && (
+          <p role="status" className="text-base text-ink-muted">Loading your projects…</p>
+        )}
+        {projects.state === "error" && (
+          <ErrorState description="We couldn't load your projects. Refresh to try again." />
+        )}
+        {projects.state === "ready" && (
+          projects.data.length === 0 ? (
+            <EmptyState
+              title="No projects yet"
+              description="A project holds one product and everything Storovex generates for it. Create your first to get started."
+              action={<Button onClick={() => { window.location.href = "/generate"; }}>Create a project</Button>}
+            />
+          ) : (
+            <ProjectList projects={projects.data} />
+          )
+        )}
+      </section>
+    </AppShell>
+  );
 }

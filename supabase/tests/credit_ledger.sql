@@ -8,6 +8,13 @@ create or replace function public.t_assert(cond boolean, msg text)
 returns void language plpgsql as $$
 begin if not cond then raise exception 'ASSERTION FAILED: %', msg; end if; end; $$;
 
+-- Reset first so the file is re-runnable: the idempotency keys below would
+-- otherwise collide with a previous run and turn the first reserve into a no-op.
+delete from public.credit_ledger where account_id='eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+delete from public.credit_accounts where id='eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+delete from public.store_members where store_id='dddddddd-dddd-dddd-dddd-dddddddddddd';
+delete from public.stores where id='dddddddd-dddd-dddd-dddd-dddddddddddd';
+
 -- Fixtures
 insert into auth.users(id,email) values
   ('33333333-3333-3333-3333-333333333333','ledger@example.com') on conflict do nothing;
@@ -15,8 +22,7 @@ insert into public.stores(id,name,owner_id) values
   ('dddddddd-dddd-dddd-dddd-dddddddddddd','Ledger Store','33333333-3333-3333-3333-333333333333')
   on conflict do nothing;
 insert into public.credit_accounts(id,store_id,balance) values
-  ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee','dddddddd-dddd-dddd-dddd-dddddddddddd',100)
-  on conflict do nothing;
+  ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee','dddddddd-dddd-dddd-dddd-dddddddddddd',100);
 
 do $$
 declare r jsonb; b integer;

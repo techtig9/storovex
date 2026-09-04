@@ -1,155 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /*
   Storovex design tokens.
-  Signature idea: the app is a light table. Themes are named for real places
-  in a photo studio (daylight, blackout, contact sheet, darkroom safelight,
-  slate lens coating, sepia print) rather than abstract "light/dark 1/2".
-  Font stack: a condensed technical grotesk for display copy (Space Grotesk),
-  a humanist sans for body text (Inter), a mono face for camera-style metadata
-  like frame numbers and credit counts (IBM Plex Mono). Self-host or wire up
-  next/font with these families; system fallbacks keep it usable without them.
+
+  The app is dark-first: the dashboard is a workspace people sit in for a long time,
+  and a dark surface keeps generated product imagery the brightest thing on screen.
+  Marketing and auth are light, because a storefront-adjacent first impression should
+  feel open rather than technical.
+
+  Every colour is a custom property so one `data-theme` attribute reskins everything.
+  A high-contrast theme is kept from the previous design system: it is an
+  accessibility affordance, not a style choice.
 */
 
-:root {
-  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+:root,
+[data-theme="light"] {
+  --brand: #7c3aed;
+  --brand-hover: #6d28d9;
+  --brand-soft: #f3ebff;
+  --brand-contrast: #ffffff;
+  --ai: #0891b2;
+  --ai-soft: #e0f7fc;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 14px;
-
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --space-12: 48px;
-}
-
-/* Daylight Studio — default. Warm-grey paper, not cream; deep developer-tray green accent. */
-[data-theme="daylight"] {
-  --bg: #f1f0ec;
+  --bg: #fafafa;
   --surface: #ffffff;
-  --surface-2: #e7e5de;
-  --ink: #17181a;
-  --ink-muted: #5b5d5f;
-  --accent: #2a4d46;
-  --accent-ink: #f1f0ec;
-  --border: #d8d6cc;
-  --focus-ring: #2a4d46;
+  --surface-raised: #f4f4f5;
+  --line: #e4e4e7;
+  --line-strong: #d4d4d8;
+
+  --ink: #18181b;
+  --ink-muted: #52525b;
+  --ink-subtle: #71717a;
+  --ink-inverse: #fafafa;
+
+  --success: #047857;
+  --success-soft: #e7f6f0;
+  --warning: #b45309;
+  --warning-soft: #fdf2e2;
+  --danger: #dc2626;
+  --danger-soft: #fdeaea;
+
+  --focus-ring: rgb(124 58 237 / 0.45);
+  color-scheme: light;
 }
 
-/* Blackout — dark. Tungsten-bulb amber accent instead of acid green or vermilion. */
-[data-theme="blackout"] {
-  --bg: #101114;
-  --surface: #17191d;
-  --surface-2: #1e2126;
-  --ink: #edeeee;
-  --ink-muted: #9a9da3;
-  --accent: #e7c34b;
-  --accent-ink: #17191d;
-  --border: #2a2d33;
-  --focus-ring: #e7c34b;
+[data-theme="dark"] {
+  --brand: #8b5cf6;
+  --brand-hover: #a78bfa;
+  --brand-soft: #241b3d;
+  --brand-contrast: #0b0a10;
+  --ai: #22d3ee;
+  --ai-soft: #103038;
+
+  --bg: #09090b;
+  --surface: #111113;
+  --surface-raised: #18181b;
+  --line: #27272a;
+  --line-strong: #3f3f46;
+
+  --ink: #fafafa;
+  --ink-muted: #a1a1aa;
+  --ink-subtle: #71717a;
+  --ink-inverse: #18181b;
+
+  --success: #34d399;
+  --success-soft: #0f2e24;
+  --warning: #fbbf24;
+  --warning-soft: #33260a;
+  --danger: #f87171;
+  --danger-soft: #3a1616;
+
+  --focus-ring: rgb(167 139 250 / 0.5);
+  color-scheme: dark;
 }
 
-/* Contact Sheet — warm proof-paper tone with a grease-pencil indigo mark. */
-[data-theme="contact-sheet"] {
-  --bg: #e7e2d6;
-  --surface: #f4f1e9;
-  --surface-2: #dad4c4;
-  --ink: #22201b;
-  --ink-muted: #6b6355;
-  --accent: #3b4a8a;
-  --accent-ink: #f4f1e9;
-  --border: #c9c1ad;
-  --focus-ring: #3b4a8a;
-}
-
-/* Darkroom Safelight — near-black with the rust-red of an actual safelight bulb. */
-[data-theme="darkroom-red"] {
-  --bg: #120a0a;
-  --surface: #1b0f0f;
-  --surface-2: #241414;
-  --ink: #f1e4e2;
-  --ink-muted: #b08883;
-  --accent: #c1443a;
-  --accent-ink: #120a0a;
-  --border: #331b1a;
-  --focus-ring: #e06657;
-}
-
-/* Slate — cool neutral, named for lens-coating blue. */
-[data-theme="slate"] {
-  --bg: #eef1f3;
-  --surface: #ffffff;
-  --surface-2: #dce2e6;
-  --ink: #14181b;
-  --ink-muted: #5a6469;
-  --accent: #3e6e8e;
-  --accent-ink: #eef1f3;
-  --border: #cbd3d8;
-  --focus-ring: #3e6e8e;
-}
-
-/* High Contrast — WCAG AAA oriented: pure black/white, thick focus rings. */
+/* WCAG AAA oriented. Carried over from the previous design system deliberately. */
 [data-theme="high-contrast"] {
+  --brand: #0033cc;
+  --brand-hover: #001f7a;
+  --brand-soft: #e6ecff;
+  --brand-contrast: #ffffff;
+  --ai: #00477a;
+  --ai-soft: #e6f2ff;
+
   --bg: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f0f0f0;
+  --surface-raised: #f0f0f0;
+  --line: #000000;
+  --line-strong: #000000;
+
   --ink: #000000;
-  --ink-muted: #333333;
-  --accent: #0033cc;
-  --accent-ink: #ffffff;
-  --border: #000000;
-  --focus-ring: #0033cc;
+  --ink-muted: #1a1a1a;
+  --ink-subtle: #333333;
+  --ink-inverse: #ffffff;
+
+  --success: #005c3d;
+  --success-soft: #e6f5ef;
+  --warning: #7a4100;
+  --warning-soft: #fff3e0;
+  --danger: #a30000;
+  --danger-soft: #ffe6e6;
+
+  --focus-ring: rgb(0 51 204 / 0.6);
+  color-scheme: light;
 }
 
-/* Sepia Print — aged-film warmth. */
-[data-theme="sepia"] {
-  --bg: #efe4ce;
-  --surface: #f7efde;
-  --surface-2: #e2d3b0;
-  --ink: #3b2c1a;
-  --ink-muted: #7a6647;
-  --accent: #8a5a2e;
-  --accent-ink: #f7efde;
-  --border: #d3c09a;
-  --focus-ring: #8a5a2e;
+@layer base {
+  * { @apply border-line; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Visible focus everywhere, never removed. :focus-visible keeps it off mouse clicks. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-offset-2;
+    --tw-ring-color: var(--brand);
+    --tw-ring-offset-color: var(--bg);
+  }
+
+  ::selection { background: var(--brand-soft); color: var(--ink); }
+
+  h1, h2, h3, h4 { @apply font-semibold tracking-tight text-ink; }
 }
 
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
-body {
-  background: var(--bg);
-  color: var(--ink);
-  font-family: var(--font-body);
+@layer components {
+  .skip-link {
+    @apply absolute left-4 -top-16 z-50 rounded-md bg-brand px-4 py-2
+           text-sm font-semibold text-brand-contrast
+           transition-[top] duration-fast focus-visible:top-4;
+  }
+
+  /* Screen-reader-only text that becomes visible on focus, for skip targets. */
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    @apply sr-only;
+  }
 }
 
-.skip-link {
-  position: absolute;
-  left: -9999px;
-  top: 0;
-  background: var(--accent);
-  color: var(--accent-ink);
-  padding: var(--space-2) var(--space-4);
-  border-radius: 0 0 var(--radius-sm) 0;
-  z-index: 100;
-}
-.skip-link:focus {
-  left: 0;
-}
-
-:focus-visible {
-  outline: 3px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
+/*
+  Honour the OS setting. Motion here is decorative — entrances and hovers — so
+  removing it costs nothing functionally. Durations go to ~0 rather than being
+  disabled outright so transitionend handlers still fire.
+*/
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.001ms !important;
+    animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
 }

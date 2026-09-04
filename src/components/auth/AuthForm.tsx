@@ -1,37 +1,49 @@
-import React, {useState} from "react";
+"use client";
+import React from "react";
+import {Input} from "@/components/ui/Input";
+import {Button} from "@/components/ui/Button";
 
-export function AuthForm(props:{mode:"login"|"signup";onSubmit:(input:{email:string;password:string})=>void;submitting:boolean;error?:string}){
- const [email,setEmail]=useState("");
- const [password,setPassword]=useState("");
- const isSignup=props.mode==="signup";
+export function AuthForm({
+  mode, onSubmit, submitting, error,
+}: {
+  mode: "login" | "signup";
+  onSubmit: (input: {email: string; password: string}) => void;
+  submitting: boolean;
+  error?: string;
+}) {
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
 
- return (
-  <form
-   onSubmit={e=>{e.preventDefault();props.onSubmit({email,password});}}
-   style={{display:"flex",flexDirection:"column",gap:"var(--space-4)",width:"100%",maxWidth:360}}
-  >
-   <div>
-    <label htmlFor="auth-email" style={{display:"block",fontSize:13,marginBottom:"var(--space-1)"}}>Email</label>
-    <input id="auth-email" type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)}
-     style={{width:"100%",padding:"var(--space-2)",border:"1px solid var(--border)",borderRadius:"var(--radius-sm)",background:"var(--surface)",color:"var(--ink)"}} />
-   </div>
-   <div>
-    <label htmlFor="auth-password" style={{display:"block",fontSize:13,marginBottom:"var(--space-1)"}}>Password</label>
-    <input id="auth-password" type="password" required minLength={8}
-     autoComplete={isSignup?"new-password":"current-password"} value={password} onChange={e=>setPassword(e.target.value)}
-     style={{width:"100%",padding:"var(--space-2)",border:"1px solid var(--border)",borderRadius:"var(--radius-sm)",background:"var(--surface)",color:"var(--ink)"}} />
-   </div>
-   {props.error&&(
-    <p role="alert" style={{margin:0,fontSize:13,color:"var(--accent)"}}>{props.error}</p>
-   )}
-   <button type="submit" disabled={props.submitting}
-    style={{
-     padding:"var(--space-3)",background:"var(--accent)",color:"var(--accent-ink)",border:"none",
-     borderRadius:"var(--radius-md)",fontFamily:"var(--font-display)",fontWeight:600,
-     cursor:props.submitting?"default":"pointer",opacity:props.submitting?0.6:1,
-    }}>
-    {props.submitting?"Please wait…":isSignup?"Create account":"Log in"}
-   </button>
-  </form>
- );
+  return (
+    <form
+      className="space-y-5"
+      noValidate
+      onSubmit={e => { e.preventDefault(); onSubmit({email, password}); }}
+    >
+      <Input
+        label="Email" type="email" name="email" required
+        autoComplete="email" value={email}
+        onChange={e => setEmail(e.target.value)}
+      />
+      <Input
+        label="Password" type="password" name="password" required
+        // Tells password managers whether to offer a saved credential or a new one.
+        autoComplete={mode === "login" ? "current-password" : "new-password"}
+        value={password}
+        onChange={e => setPassword(e.target.value)}
+        hint={mode === "signup" ? "At least 12 characters." : undefined}
+      />
+
+      {error && (
+        <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger">
+          {error}
+        </p>
+      )}
+
+      <Button type="submit" fullWidth size="lg" loading={submitting}
+              loadingLabel={mode === "login" ? "Signing in…" : "Creating account…"}>
+        {mode === "login" ? "Log in" : "Create account"}
+      </Button>
+    </form>
+  );
 }
