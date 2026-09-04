@@ -208,7 +208,14 @@ export async function createOrderGroup(input: {
       orders.push({id: order.id, storeId: store.storeId, orderNumber: order.order_number, total: store.totals.total});
     }
 
-    await supabase.from("carts").update({status: "checked_out"}).eq("id", quote.cartId);
+    // 'converted' — carts_status_check allows open | converted | abandoned only.
+    // This previously wrote 'checked_out', which the constraint rejects. supabase-js
+    // returns errors rather than throwing, and the result was discarded, so the
+    // write silently failed and left the cart open: the same basket could be
+    // checked out again, creating a second set of orders for one shopper.
+    const {error: cartError} = await supabase
+      .from("carts").update({status: "converted"}).eq("id", quote.cartId);
+    if (cartError) throw new CheckoutError("CART_CLOSE_FAILED", cartError);
 
     return {
       orderGroupId, orders,

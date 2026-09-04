@@ -113,6 +113,31 @@ export async function refundPaymentIntent(input: {
   return {id: body.id as string, status: body.status as string};
 }
 
+/**
+ * Creates the connected account a merchant is paid into.
+ *
+ * Kept separate from the onboarding link because the account is created once and
+ * stored, while the link expires and is regenerated every time the merchant returns
+ * to finish onboarding. Creating a second account for a merchant who already has one
+ * would silently split their payouts, so the caller must persist the id it gets back.
+ */
+export async function createConnectAccount(input: {
+  storeId: string; email?: string; country?: string;
+}, opts: {fetchImpl?: FetchLike} = {}) {
+  const body = await stripeFetch("/accounts", {
+    type: "standard",
+    ...(input.email ? {email: input.email} : {}),
+    ...(input.country ? {country: input.country} : {}),
+    metadata: {store_id: input.storeId},
+  }, {
+    // Keyed on the store, so a double-click during onboarding returns the same
+    // account rather than creating a second one.
+    idempotencyKey: `connect-account:${input.storeId}`,
+    fetchImpl: opts.fetchImpl,
+  });
+  return {id: body.id as string};
+}
+
 /** Creates the onboarding link a merchant follows to connect their Stripe account. */
 export async function createConnectAccountLink(input: {
   accountId: string; refreshUrl: string; returnUrl: string;

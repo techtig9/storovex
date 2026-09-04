@@ -13,7 +13,11 @@ import {
  * even if the store id were wrong.
  */
 
-const PAID_STATUSES = ["paid", "fulfilled", "shipped", "delivered"];
+// orders_status_check allows pending_payment | paid | failed | fulfilled |
+// cancelled | refunded. 'shipped' and 'delivered' were in this list and can never
+// occur, so they matched nothing — harmless, but it read as though the pipeline
+// had stages it does not have.
+const PAID_STATUSES = ["paid", "fulfilled"];
 
 export async function storeAnalytics(storeId: string, days = 30) {
   const supabase = createServerSupabase();

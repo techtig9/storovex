@@ -3,36 +3,12 @@ import React from "react";
 import {Button} from "@/components/ui/Button";
 import {Select} from "@/components/ui/Input";
 import {formatMoney} from "@/core/commerce/money";
+import {cartToken} from "./cartToken";
 
 export type StorefrontVariant = {
   id: string; sku: string; price: number; inStock: boolean;
   options: Record<string, string>;
 };
-
-const CART_TOKEN_KEY = "storovex-cart-token";
-
-/**
- * A shopper is anonymous, so their basket is identified by a token held in the
- * browser. It is generated here rather than server-side so a visitor who never adds
- * anything never causes a cart row to exist.
- */
-function cartToken(): string {
-  try {
-    const existing = localStorage.getItem(CART_TOKEN_KEY);
-    if (existing) return existing;
-    const bytes = new Uint8Array(24);
-    crypto.getRandomValues(bytes);
-    const token = Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
-    localStorage.setItem(CART_TOKEN_KEY, token);
-    return token;
-  } catch {
-    // Private browsing can refuse storage. A per-session token still lets this
-    // visit work, it just will not survive a reload.
-    const bytes = new Uint8Array(24);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
-  }
-}
 
 function describeVariant(v: StorefrontVariant) {
   const options = Object.values(v.options ?? {}).filter(Boolean).join(" · ");

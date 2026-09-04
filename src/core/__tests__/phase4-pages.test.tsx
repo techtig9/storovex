@@ -101,21 +101,75 @@ describe("auth pages", () => {
   });
 });
 
+const analytics = (over: Record<string, unknown> = {}) => ({
+  periodDays: 30,
+  revenue: {current: 0, previous: 0, changePct: null},
+  orders: {current: 0, previous: 0, changePct: null},
+  netToMerchant: 0, platformFees: 0, averageOrderValue: 0,
+  refundRatePct: 0, topProducts: [],
+  ...over,
+});
+
 describe("dashboard", () => {
-  it("shows an empty state rather than fabricating numbers", () => {
+  function serve(data: unknown) {
+    global.fetch = jest.fn().mockResolvedValue(envelope(data)) as unknown as typeof fetch;
+  }
+
+  it("shows an empty state rather than fabricating numbers", async () => {
+    serve(analytics());
     render(<DashboardPage />);
     expect(screen.getByRole("heading", {name: "Dashboard"})).toBeInTheDocument();
-    // Rendering zeroes for sales that have not happened would read as real data.
-    expect(screen.getByText("Nothing to show yet")).toBeInTheDocument();
+    // Zeroes for sales that never happened read as real data, so a store with no
+    // orders is told so in words instead.
+    expect(await screen.findByText("No sales in this period")).toBeInTheDocument();
   });
 
-  it("points the merchant at the first useful action", () => {
+  it("points the merchant at the first useful action", async () => {
+    serve(analytics());
     render(<DashboardPage />);
-    expect(screen.getByRole("button", {name: "Add a product"})).toBeInTheDocument();
+    expect(await screen.findByRole("button", {name: "Go to your products"})).toBeInTheDocument();
+  });
+
+  it("reports real figures once there are sales", async () => {
+    serve(analytics({
+      revenue: {current: 125_00, previous: 100_00, changePct: 25},
+      orders: {current: 4, previous: 2, changePct: 100},
+      netToMerchant: 118_75, platformFees: 6_25, averageOrderValue: 31_25,
+    }));
+    render(<DashboardPage />);
+    expect(await screen.findByText("$125.00")).toBeInTheDocument();
+    expect(screen.getByText("up 25% on the period before")).toBeInTheDocument();
+    // The merchant's own take is the number they care about, and it is not the
+    // same as revenue.
+    expect(screen.getByText("$118.75")).toBeInTheDocument();
+  });
+
+  it("never states a percentage for growth from zero", async () => {
+    // changePct is null when the previous period was zero. Rendering that as
+    // "up 100%" or "up Infinity%" would be a number somebody acts on.
+    serve(analytics({
+      revenue: {current: 40_00, previous: 0, changePct: null},
+      orders: {current: 1, previous: 0, changePct: null},
+    }));
+    render(<DashboardPage />);
+    expect(await screen.findByText("$40.00")).toBeInTheDocument();
+    expect(screen.getAllByText("First activity in this period").length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toMatch(/Infinity|NaN/);
+  });
+
+  it("surfaces a failure instead of showing an empty dashboard", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false, status: 500,
+      json: async () => ({ok: false, error: {code: "BOOM", message: "We couldn't load your figures."}}),
+    }) as unknown as typeof fetch;
+    render(<DashboardPage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("We couldn't load your figures.");
   });
 
   it("has no accessibility violations", async () => {
+    serve(analytics());
     const {container} = render(<DashboardPage />);
+    await screen.findByText("No sales in this period");
     expect(await axe(container)).toHaveNoViolations();
   });
 });

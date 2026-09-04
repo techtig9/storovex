@@ -1,8 +1,30 @@
 import {NextResponse, type NextRequest} from "next/server";
 import {updateSession} from "@/core/supabase/middleware";
 
+/**
+ * This file MUST live at src/middleware.ts, not at the repository root.
+ *
+ * Next.js looks for middleware beside the `app` directory: at the project root for a
+ * root-level app/, and inside src/ for a src/app/ project like this one. It was at
+ * the root, so Next compiled no middleware at all — the build manifest listed
+ * "middleware": [] — and every guard below was silently inert. Protected routes
+ * served to signed-out visitors, and sessions were never refreshed, so a user would
+ * be logged out whenever their access token expired.
+ *
+ * Nothing warned about this. The file typechecked, linted and looked correct; it was
+ * simply never loaded. Moving it here is the entire fix.
+ */
+
 // Everything under these prefixes requires a signed-in user.
-const PROTECTED_PREFIXES = ["/dashboard", "/generate", "/billing", "/projects", "/settings", "/admin"];
+//
+// This list must track the merchant routes that actually exist. It previously named
+// /generate, /billing and /projects — routes from a different product that no longer
+// exist here — while omitting /products, /orders and /discounts, which do. The API
+// still refused those callers, so nothing leaked, but an unauthenticated visitor got
+// a broken screen full of errors instead of being sent to sign in.
+const PROTECTED_PREFIXES = [
+  "/dashboard", "/products", "/orders", "/discounts", "/settings", "/admin",
+];
 // Signed-in users are bounced away from these.
 const AUTH_ONLY_PREFIXES = ["/login", "/signup", "/reset-password"];
 
