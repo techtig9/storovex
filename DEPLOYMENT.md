@@ -20,12 +20,27 @@ missing. That is the expected state, not a fault.
 
 This is the one step that must happen before the app can serve a signed-in user.
 
+### Quickest route: the Supabase SQL Editor
+
+`supabase/bundle/all_migrations.sql` is every migration concatenated in dependency
+order, wrapped in a transaction. Open your project's SQL Editor, paste the file, run
+it once. Then paste and run `supabase/bundle/all_tests.sql` to prove tenant isolation,
+the credit-ledger invariants and billing entitlements on your own database — it raises
+on any failed assertion, so completing without an error means everything passed.
+
+Both files are regenerated from `supabase/migrations/` and `supabase/tests/`; do not
+edit them by hand. Both are safe to re-run.
+
+### Or via psql
+
 ```sh
 # Against a Supabase project you own:
 for f in supabase/migrations/*.sql; do
   psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f "$f"
 done
 ```
+
+The connection string is in Project Settings → Database → Connection string (URI).
 
 Apply them **in filename order** — they are numbered in dependency order and each one
 depends only on files numbered before it.

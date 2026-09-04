@@ -28,3 +28,16 @@ The same `rls_isolation.sql` runs unmodified against a real Supabase project —
 the harness, since `auth.users` and `auth.uid()` are already provided there. Use a
 scratch project, never one holding real data: the script inserts fixture users and
 stores and does not clean up after itself.
+
+## Paste-ready bundles
+
+`supabase/bundle/all_migrations.sql` and `supabase/bundle/all_tests.sql` are the
+migrations and tests concatenated in order, for environments where a direct database
+connection is not available and the Supabase SQL Editor is the only way in.
+
+Regenerate them after changing anything under `supabase/migrations/` or
+`supabase/tests/`:
+
+```sh
+scripts/build-sql-bundle.sh
+```
