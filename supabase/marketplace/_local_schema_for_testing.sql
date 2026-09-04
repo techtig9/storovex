@@ -32,6 +32,11 @@ create table if not exists public.stores(
   id uuid primary key default gen_random_uuid(),
   owner_id uuid,
   name text,
+  slug text unique,
+  -- subscriptions has no store_id, and try_decrement_credits takes a subscription
+  -- id, so the link must live here. Confirm against the restored table.
+  subscription_id uuid,
+  stripe_account_id text,
   created_at timestamptz default now()
 );
 -- APPROXIMATE — real definition must be restored from backup.
