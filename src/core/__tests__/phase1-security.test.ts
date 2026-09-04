@@ -1,10 +1,7 @@
 import {safeRedirectPath} from "@/core/auth/redirect";
-import {escapeLikePattern, canTransitionStatus} from "@/core/projects/projectRules";
 import {signupSchema, loginSchema, emailSchema, passwordSchema} from "@/core/auth/schemas";
 import {integrationStatuses, requiredIntegrationsReady, requireIntegration, IntegrationNotConfiguredError} from "@/core/config/integrations";
 import {siteUrl} from "@/core/config/site";
-import {estimateCredits} from "@/core/generation/catalog";
-import {maxSpendPerJob} from "@/core/billing/plans";
 
 describe("open redirect protection (auth callback and login `next`)", () => {
   it("keeps a same-origin path", () => {
@@ -33,38 +30,7 @@ describe("open redirect protection (auth callback and login `next`)", () => {
   });
 });
 
-describe("ILIKE wildcard escaping (search DoS)", () => {
-  it("neutralises wildcards so a term matches literally", () => {
-    expect(escapeLikePattern("100%")).toBe("100\\%");
-    expect(escapeLikePattern("a_b")).toBe("a\\_b");
-    expect(escapeLikePattern("%%%%%%")).toBe("\\%\\%\\%\\%\\%\\%");
-  });
 
-  it("escapes the backslash itself first, so escaping cannot be escaped", () => {
-    expect(escapeLikePattern("a\\%")).toBe("a\\\\\\%");
-  });
-
-  it("leaves ordinary text untouched", () => {
-    expect(escapeLikePattern("Spring Campaign")).toBe("Spring Campaign");
-  });
-});
-
-describe("project status transitions are server-decided", () => {
-  it("allows draft and active to move freely", () => {
-    expect(canTransitionStatus("draft", "active")).toBe(true);
-    expect(canTransitionStatus("active", "draft")).toBe(true);
-  });
-
-  it("only allows an archived project back to active", () => {
-    expect(canTransitionStatus("archived", "active")).toBe(true);
-    // The transition a client used to be able to force by lying about `from`.
-    expect(canTransitionStatus("archived", "draft")).toBe(false);
-  });
-
-  it("rejects a no-op transition", () => {
-    expect(canTransitionStatus("active", "active")).toBe(false);
-  });
-});
 
 describe("auth input validation", () => {
   it("normalises email case and whitespace", () => {
@@ -149,18 +115,3 @@ describe("site origin is configuration, never a request header", () => {
   });
 });
 
-describe("per-job spend cap is enforced, not silently applied", () => {
-  it("a high-quality collection exceeds the starter cap", () => {
-    // 20 base * 1.8 high * 1 = 36 credits; starter allows 60, so this is under.
-    expect(estimateCredits("collection", "high", 1)).toBe(36);
-    expect(estimateCredits("collection", "high", 1)).toBeLessThan(maxSpendPerJob("starter"));
-  });
-
-  it("a batch of them exceeds it, and the estimate reflects the true cost", () => {
-    const credits = estimateCredits("collection", "high", 4);
-    expect(credits).toBe(144);
-    // generationService now refuses this rather than reserving the 60-credit cap and
-    // performing 144 credits of work, which is what Math.min() used to do.
-    expect(credits).toBeGreaterThan(maxSpendPerJob("starter"));
-  });
-});

@@ -10,49 +10,45 @@ export async function requireSession() {
   return data.user;
 }
 
+/**
+ * Confirms the caller belongs to a store and returns their role.
+ *
+ * Reads through store_team_members, which is the marketplace's membership table.
+ */
 export async function requireStoreMembership(storeId: string) {
   const user = await requireSession();
   const supabase = createServerSupabase();
   const {data, error} = await supabase
-    .from("store_members")
-    .select("store_id,role,status")
+    .from("store_team_members")
+    .select("store_id,role")
     .eq("store_id", storeId)
     .eq("user_id", user.id)
     .maybeSingle();
-  if (error || !data || data.status !== "active") throw new Error("STORE_ACCESS_DENIED");
+  if (error || !data) throw new Error("STORE_ACCESS_DENIED");
   return {user, storeId, role: data.role as Role};
 }
 
 /**
- * Resolves which store a request acts on. The client may name one, but membership is
- * always verified server-side; if it names none, we fall back to the caller's own
- * store. Pages previously sent the literal string "current" as a store id, which is
- * not a UUID, so every dashboard request failed.
+ * Resolves which store a request acts on. A client may name one, but membership is
+ * always verified server-side; naming none falls back to the caller's first store.
  */
 export async function resolveStoreId(requested?: string | null): Promise<string> {
   const user = await requireSession();
   const supabase = createServerSupabase();
 
-  if (requested && requested !== "current") {
+  if (requested) {
     const {data} = await supabase
-      .from("store_members")
-      .select("store_id")
-      .eq("store_id", requested)
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle();
+      .from("store_team_members").select("store_id")
+      .eq("store_id", requested).eq("user_id", user.id).maybeSingle();
     if (!data) throw new Error("STORE_ACCESS_DENIED");
     return data.store_id as string;
   }
 
   const {data} = await supabase
-    .from("store_members")
-    .select("store_id,created_at")
+    .from("store_team_members").select("store_id,invited_at")
     .eq("user_id", user.id)
-    .eq("status", "active")
-    .order("created_at", {ascending: true})
-    .limit(1)
-    .maybeSingle();
+    .order("invited_at", {ascending: true})
+    .limit(1).maybeSingle();
   if (!data) throw new Error("NO_STORE");
   return data.store_id as string;
 }

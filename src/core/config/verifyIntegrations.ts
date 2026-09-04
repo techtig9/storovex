@@ -1,5 +1,4 @@
 import {integrationStatuses, type IntegrationId} from "./integrations";
-import {geminiImageModel} from "@/core/ai/providers/gemini";
 import {anthropicModel, cerebrasModel, openRouterModel} from "@/core/ai/providers/chat";
 import type {FetchLike} from "@/core/ai/providers/types";
 
@@ -37,42 +36,6 @@ async function timedFetch(url: string, init: RequestInit, fetchImpl?: FetchLike)
   } finally {
     clearTimeout(timer);
   }
-}
-
-/** ListModels is free and confirms both the key and that our model exists. */
-async function checkGemini(fetchImpl?: FetchLike): Promise<{ok: boolean; detail: string; remedy?: string}> {
-  const res = await timedFetch(
-    "https://generativelanguage.googleapis.com/v1beta/models",
-    {headers: {"x-goog-api-key": process.env.GEMINI_API_KEY!}},
-    fetchImpl
-  );
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    // Google reports a bad key as HTTP 400, not 401 — verified against the live API.
-    const isAuth = /API_KEY_INVALID|api key not valid/i.test(body);
-    return {
-      ok: false,
-      detail: `ListModels returned ${res.status}`,
-      remedy: isAuth
-        ? "GEMINI_API_KEY is not valid. Regenerate it in Google AI Studio."
-        : "Check that the Generative Language API is enabled for this key's project.",
-    };
-  }
-
-  const body = await res.json() as {models?: {name?: string}[]};
-  const wanted = geminiImageModel();
-  const names = (body.models ?? []).map(m => (m.name ?? "").replace(/^models\//, ""));
-  const found = names.some(n => n === wanted || n.startsWith(`${wanted}-`));
-
-  if (!found) {
-    return {
-      ok: false,
-      detail: `Key works, but "${wanted}" is not in the ${names.length} models this key can use.`,
-      // The one thing no offline test can catch: a model name that does not exist.
-      remedy: `Set GEMINI_IMAGE_MODEL to one of: ${names.filter(n => /image/i.test(n)).slice(0, 5).join(", ") || names.slice(0, 5).join(", ")}`,
-    };
-  }
-  return {ok: true, detail: `Key valid; image model "${wanted}" is available.`};
 }
 
 /** A 1-token message is the cheapest call that proves the key and model both work. */
@@ -136,33 +99,25 @@ async function checkResend(fetchImpl?: FetchLike) {
     : "Key valid. No verified domain yet — add one before sending in production."};
 }
 
-/** Reads event types, and confirms the configured price ids actually exist. */
-async function checkPaddle(fetchImpl?: FetchLike) {
-  const base = process.env.PADDLE_ENVIRONMENT === "sandbox"
-    ? "https://sandbox-api.paddle.com" : "https://api.paddle.com";
-  const res = await timedFetch(`${base}/prices?per_page=100`,
-    {headers: {Authorization: `Bearer ${process.env.PADDLE_API_KEY}`}}, fetchImpl);
+/**
+ * Confirms the Stripe key works and that Connect is enabled — a platform that cannot
+ * create connected accounts cannot pay its merchants, and that failure is much
+ * cheaper to find here than at a shopper's first checkout.
+ */
+async function checkStripe(fetchImpl?: FetchLike) {
+  const res = await timedFetch("https://api.stripe.com/v1/accounts?limit=1",
+    {headers: {Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`}}, fetchImpl);
   if (!res.ok) {
+    const body = await res.text().catch(() => "");
     return {ok: false, detail: `Returned ${res.status}`,
-      remedy: "Check PADDLE_API_KEY and PADDLE_ENVIRONMENT."};
+      remedy: /testmode|test mode/i.test(body)
+        ? "The key is for the wrong mode. Check you are using live keys in production."
+        : "Check STRIPE_SECRET_KEY."};
   }
-
-  const body = await res.json().catch(() => null) as {data?: {id?: string}[]} | null;
-  const live = new Set((body?.data ?? []).map(p => p.id));
-  const configured = Object.entries(process.env)
-    .filter(([k, v]) => k.startsWith("PADDLE_PRICE_") && v)
-    .map(([k, v]) => [k, v as string] as const);
-
-  if (configured.length === 0) {
-    return {ok: false, detail: "Key valid, but no PADDLE_PRICE_* ids are set.",
-      remedy: "Set a price id per plan and cycle, e.g. PADDLE_PRICE_PRO_MONTHLY."};
-  }
-  const missing = configured.filter(([, id]) => !live.has(id)).map(([k]) => k);
-  if (missing.length) {
-    return {ok: false, detail: `Key valid, but these price ids do not exist in this environment: ${missing.join(", ")}`,
-      remedy: "Price ids differ between sandbox and live. Check PADDLE_ENVIRONMENT."};
-  }
-  return {ok: true, detail: `Key valid; all ${configured.length} configured price ids exist.`};
+  const body = await res.json().catch(() => null) as {data?: unknown[]} | null;
+  return {ok: true, detail: body?.data
+    ? `Key valid; Connect enabled with ${body.data.length} account(s) visible.`
+    : "Key valid."};
 }
 
 export async function verifyIntegrations(opts: {fetchImpl?: FetchLike} = {}): Promise<CheckResult[]> {
@@ -183,7 +138,7 @@ export async function verifyIntegrations(opts: {fetchImpl?: FetchLike} = {}): Pr
           // A cheap authenticated read that also proves RLS-bypass works.
           outcome = await checkSupabase(opts.fetchImpl);
           break;
-        case "gemini": outcome = await checkGemini(opts.fetchImpl); break;
+        case "gemini": outcome = {ok: false, detail: "No check defined yet."}; break;
         case "anthropic": outcome = await checkAnthropic(opts.fetchImpl); break;
         case "cerebras":
           outcome = await checkOpenAiShaped("Cerebras", "https://api.cerebras.ai/v1/models",
@@ -194,7 +149,7 @@ export async function verifyIntegrations(opts: {fetchImpl?: FetchLike} = {}): Pr
             process.env.OPENROUTER_API_KEY!, openRouterModel(), "OPENROUTER_API_KEY", opts.fetchImpl);
           break;
         case "resend": outcome = await checkResend(opts.fetchImpl); break;
-        case "paddle": outcome = await checkPaddle(opts.fetchImpl); break;
+        case "stripe": outcome = await checkStripe(opts.fetchImpl); break;
         default: outcome = {ok: false, detail: "No check defined."};
       }
       results.push({...base, ...outcome});

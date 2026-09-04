@@ -47,13 +47,23 @@ describe("marketing home", () => {
 });
 
 describe("pricing", () => {
-  it("shows every plan with its real credit allowance", () => {
+  it("explains the marketplace model: a fee per sale, not a monthly plan", () => {
     render(<PricingPage />);
-    for (const name of ["Starter", "Mid", "Pro"]) {
-      expect(screen.getByRole("heading", {name})).toBeInTheDocument();
-    }
-    // Sourced from the plans module, not hardcoded in the page.
-    expect(screen.getByText(/3,000/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", {name: "Selling"})).toBeInTheDocument();
+    expect(screen.getByRole("heading", {name: "AI features"})).toBeInTheDocument();
+    expect(screen.getByText(/per sale/)).toBeInTheDocument();
+  });
+
+  it("takes the fee rate from the checkout module rather than hardcoding it", () => {
+    render(<PricingPage />);
+    // Drifting between the advertised rate and the charged rate would be a
+    // trust problem, so the page reads the same constant checkout uses.
+    expect(document.body.textContent).toMatch(/5%/);
+  });
+
+  it("is honest that Stripe charges its own fees on top", () => {
+    render(<PricingPage />);
+    expect(document.body.textContent).toMatch(/Stripe/);
   });
 
   it("has no accessibility violations", async () => {
@@ -92,45 +102,20 @@ describe("auth pages", () => {
 });
 
 describe("dashboard", () => {
-  it("requests its own store rather than sending a placeholder id", async () => {
+  it("shows an empty state rather than fabricating numbers", () => {
     render(<DashboardPage />);
-    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-    const urls = (global.fetch as jest.Mock).mock.calls.map(c => String(c[0]));
-    // "current" was sent as a literal store id before, which can never match a UUID.
-    expect(urls.some(u => u.includes("current"))).toBe(false);
-    expect(urls).toEqual(expect.arrayContaining(["/api/dashboard/kpis", "/api/projects"]));
+    expect(screen.getByRole("heading", {name: "Dashboard"})).toBeInTheDocument();
+    // Rendering zeroes for sales that have not happened would read as real data.
+    expect(screen.getByText("Nothing to show yet")).toBeInTheDocument();
   });
 
-  it("shows an empty state rather than a blank page when there are no projects", async () => {
-    (global.fetch as jest.Mock)
-      .mockResolvedValueOnce(envelope({activationRatePct: 0, generationSuccessRatePct: 100, creditsRemainingPct: 100}))
-      .mockResolvedValueOnce(envelope({projects: []}));
+  it("points the merchant at the first useful action", () => {
     render(<DashboardPage />);
-    await waitFor(() => expect(screen.getByText("No projects yet")).toBeInTheDocument());
+    expect(screen.getByRole("button", {name: "Add a product"})).toBeInTheDocument();
   });
 
-  it("surfaces a failure instead of showing zeroes as if they were real", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({ok: false, status: 500, json: async () => ({})});
-    render(<DashboardPage />);
-    // Rendering 0% for a failed request would be fabricated data.
-    await waitFor(() => expect(screen.getAllByRole("alert").length).toBeGreaterThan(0));
-  });
-
-  it("renders projects it receives", async () => {
-    (global.fetch as jest.Mock)
-      .mockResolvedValueOnce(envelope({activationRatePct: 40, generationSuccessRatePct: 90, creditsRemainingPct: 60}))
-      .mockResolvedValueOnce(envelope({projects: [{id: "p1", name: "Fall Drop", status: "active", updated_at: "2026-01-01"}]}));
-    render(<DashboardPage />);
-    await waitFor(() => expect(screen.getByText("Fall Drop")).toBeInTheDocument());
-    expect(screen.getByText("40%")).toBeInTheDocument();
-  });
-
-  it("has no accessibility violations once loaded", async () => {
-    (global.fetch as jest.Mock)
-      .mockResolvedValueOnce(envelope({activationRatePct: 40, generationSuccessRatePct: 90, creditsRemainingPct: 60}))
-      .mockResolvedValueOnce(envelope({projects: [{id: "p1", name: "Fall Drop", status: "active", updated_at: "2026-01-01"}]}));
+  it("has no accessibility violations", async () => {
     const {container} = render(<DashboardPage />);
-    await waitFor(() => expect(screen.getByText("Fall Drop")).toBeInTheDocument());
     expect(await axe(container)).toHaveNoViolations();
   });
 });

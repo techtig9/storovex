@@ -17,15 +17,20 @@ export function Skeleton({className}: {className?: string}) {
   );
 }
 
+/**
+ * `as` defaults to h3 but the level is the caller's to set: an empty state directly
+ * under a page h1 needs an h2, and axe rightly flags a skipped level.
+ */
 export function EmptyState({
-  title, description, action, icon,
+  title, description, action, icon, as: Heading = "h3",
 }: {
   title: string; description: string; action?: React.ReactNode; icon?: React.ReactNode;
+  as?: "h2" | "h3" | "h4";
 }) {
   return (
     <Card className="flex flex-col items-center gap-3 px-6 py-14 text-center">
       {icon && <div aria-hidden="true" className="text-ink-subtle">{icon}</div>}
-      <h3 className="text-md font-semibold">{title}</h3>
+      <Heading className="text-md font-semibold">{title}</Heading>
       <p className="max-w-sm text-base text-ink-muted">{description}</p>
       {action && <div className="mt-2">{action}</div>}
     </Card>
@@ -37,13 +42,13 @@ export function EmptyState({
  * asked for should be announced, not silently swapped in.
  */
 export function ErrorState({
-  title = "Something went wrong", description, action,
+  title = "Something went wrong", description, action, as: Heading = "h3",
 }: {
-  title?: string; description: string; action?: React.ReactNode;
+  title?: string; description: string; action?: React.ReactNode; as?: "h2" | "h3" | "h4";
 }) {
   return (
     <Card className="flex flex-col items-center gap-3 border-danger/30 px-6 py-12 text-center" role="alert">
-      <h3 className="text-md font-semibold text-danger">{title}</h3>
+      <Heading className="text-md font-semibold text-danger">{title}</Heading>
       <p className="max-w-sm text-base text-ink-muted">{description}</p>
       {action && <div className="mt-2">{action}</div>}
     </Card>

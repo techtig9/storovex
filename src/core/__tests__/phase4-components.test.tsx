@@ -10,7 +10,6 @@ import {Modal} from "@/components/ui/Modal";
 import {ToastProvider, useToast} from "@/components/ui/Toast";
 import {Badge, EmptyState, ErrorState} from "@/components/ui/States";
 import {MetricCard} from "@/components/ui/MetricCard";
-import {GenerationProgress} from "@/components/generation/GenerationProgress";
 
 describe("Button", () => {
   it("stays focusable while loading, and reports itself busy", async () => {
@@ -199,22 +198,5 @@ describe("state components", () => {
   it("gives a loading metric an accessible label", () => {
     render(<MetricCard loading label="Credits remaining" value="—" hint="" />);
     expect(screen.getByText("Loading Credits remaining")).toBeInTheDocument();
-  });
-});
-
-describe("GenerationProgress", () => {
-  it("announces the current stage through a live region", () => {
-    render(<GenerationProgress stage="generating_assets" />);
-    expect(screen.getByRole("status")).toHaveTextContent("Generating assets.");
-  });
-
-  it("announces a failure and shows the reason", () => {
-    render(<GenerationProgress stage="failed" error="The image service was busy." />);
-    expect(screen.getByRole("alert")).toHaveTextContent("The image service was busy.");
-  });
-
-  it("has no accessibility violations", async () => {
-    const {container} = render(<GenerationProgress stage="building" />);
-    expect(await axe(container)).toHaveNoViolations();
   });
 });

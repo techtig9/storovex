@@ -10,7 +10,7 @@
  * The rule this encodes: a missing credential is a configuration state, not a crash.
  */
 
-export type IntegrationId = "supabase" | "paddle" | "resend" | "gemini" | "cerebras" | "openrouter" | "anthropic";
+export type IntegrationId = "supabase" | "stripe" | "resend" | "gemini" | "cerebras" | "openrouter" | "anthropic";
 
 export type IntegrationStatus = {
   id: IntegrationId;
@@ -39,8 +39,8 @@ export function integrationStatuses(): IntegrationStatus[] {
     check("supabase", "Supabase",
       ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"],
       true, "Authentication, database and storage — the app cannot serve signed-in users."),
-    check("paddle", "Paddle", ["PADDLE_API_KEY", "PADDLE_WEBHOOK_SECRET"],
-      false, "Checkout and subscription webhooks. Existing plans still read from the database."),
+    check("stripe", "Stripe", ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
+      false, "Checkout, payouts to merchants and the platform fee. Browsing and cart still work."),
     check("resend", "Resend", ["RESEND_API_KEY", "RESEND_WEBHOOK_SECRET"],
       false, "Transactional email. Supabase still sends its own auth emails."),
     check("gemini", "Gemini", ["GEMINI_API_KEY"], false, "Image generation."),

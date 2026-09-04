@@ -18,11 +18,11 @@ export const NAV_ITEMS: NavItem[] = [
     icon: <svg {...iconProps}><rect x="2.5" y="2.5" width="6" height="6" rx="1.5" /><rect x="11.5" y="2.5" width="6" height="6" rx="1.5" /><rect x="2.5" y="11.5" width="6" height="6" rx="1.5" /><rect x="11.5" y="11.5" width="6" height="6" rx="1.5" /></svg>,
   },
   {
-    id: "generate", label: "Generate", href: "/generate",
-    icon: <svg {...iconProps}><path d="M10 2.5 11.8 7l4.7 1.4-3.4 3.4.5 4.7L10 14.4 6.4 16.5l.5-4.7L3.5 8.4 8.2 7z" /></svg>,
+    id: "products", label: "Products", href: "/products",
+    icon: <svg {...iconProps}><path d="M3 6.5 10 3l7 3.5v7L10 17l-7-3.5z" /><path d="M3 6.5 10 10l7-3.5M10 10v7" /></svg>,
   },
   {
-    id: "billing", label: "Billing", href: "/billing",
-    icon: <svg {...iconProps}><rect x="2.5" y="4.5" width="15" height="11" rx="2" /><path d="M2.5 8.5h15" /></svg>,
+    id: "orders", label: "Orders", href: "/orders",
+    icon: <svg {...iconProps}><path d="M4 3h9l3 3v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" /><path d="M6.5 9h7M6.5 12.5h7" /></svg>,
   },
 ];
