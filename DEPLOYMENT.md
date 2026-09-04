@@ -22,9 +22,18 @@ This is the one step that must happen before the app can serve a signed-in user.
 
 ### Route A: the Supabase SQL Editor, in small parts
 
-`supabase/bundle/parts/` holds the schema split into twelve files of 1–8 KB. Paste
-them into the SQL Editor **in numeric order**, `01-` through `12-`, running each
-before moving on. Each part depends only on the ones before it, and every part is
+**Run `00-reconcile.sql` first.** The schema uses `create table if not exists`, so a
+table of the same name left over from an earlier or unrelated schema is kept as-is
+and later statements then fail against it — `ERROR: 42703: column "store_id" does not
+exist` is the usual symptom. The reconcile script finds any such table and drops it
+**only if it is empty**; if it holds rows it changes nothing and stops with an error
+naming the table, so no data is ever lost to a migration.
+
+`00-diagnose.sql` is read-only and reports what already exists, if you want to look
+before running anything.
+
+Then paste the schema parts into the SQL Editor **in numeric order**, `01-` through
+`12-`, running each before moving on. Each part depends only on the ones before it, and every part is
 idempotent — if a paste is interrupted, just run that part again.
 
 Then run `test-1-` through `test-3-` from the same directory to prove tenant

@@ -53,8 +53,11 @@ STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Individually pasteable parts, for the Supabase SQL Editor where one 60KB paste is
 # unwieldy. Each part is small and idempotent, so an interrupted paste can be re-run.
-rm -rf supabase/bundle/parts
+# 00-reconcile.sql and 00-diagnose.sql are hand-written pre-flight scripts, not
+# generated from migrations, so preserve them across a rebuild.
 mkdir -p supabase/bundle/parts
+find supabase/bundle/parts -name '[0-9][0-9]-*.sql' ! -name '00-*' -delete
+find supabase/bundle/parts -name 'test-*.sql' -delete
 i=0
 for f in supabase/migrations/*.sql; do
   i=$((i+1))
