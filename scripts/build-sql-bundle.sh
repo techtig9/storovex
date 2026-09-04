@@ -51,4 +51,35 @@ STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   done
 } > supabase/bundle/all_tests.sql
 
-echo "Wrote supabase/bundle/all_migrations.sql and all_tests.sql"
+# Individually pasteable parts, for the Supabase SQL Editor where one 60KB paste is
+# unwieldy. Each part is small and idempotent, so an interrupted paste can be re-run.
+rm -rf supabase/bundle/parts
+mkdir -p supabase/bundle/parts
+i=0
+for f in supabase/migrations/*.sql; do
+  i=$((i+1))
+  n=$(printf "%02d" $i)
+  name=$(basename "$f" .sql | sed 's/^[0-9]*_//')
+  {
+    echo "-- Storovex schema — part ${n} of 12: ${name}"
+    echo "-- Run the parts in numeric order. Each depends only on the parts before it."
+    echo "-- Safe to re-run: every statement is idempotent."
+    echo ""
+    cat "$f"
+  } > "supabase/bundle/parts/${n}-${name}.sql"
+done
+
+i=0
+for t in rls_isolation credit_ledger billing_entitlements; do
+  i=$((i+1))
+  {
+    echo "-- Storovex verification — test ${i} of 3: ${t}"
+    echo "-- Run after all 12 schema parts."
+    echo "-- Raises on any failed assertion, so no error means it passed."
+    echo "-- Inserts fixture rows; use a project without real data. Safe to re-run."
+    echo ""
+    cat "supabase/tests/$t.sql"
+  } > "supabase/bundle/parts/test-${i}-${t}.sql"
+done
+
+echo "Wrote supabase/bundle/all_migrations.sql, all_tests.sql and parts/"
