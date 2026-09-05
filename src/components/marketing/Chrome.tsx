@@ -28,7 +28,7 @@ export function MarketingFooter() {
   return (
     <footer className="border-t border-line">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 py-10 text-sm text-ink-subtle sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-        <p>Storovex — AI product photography for online stores.</p>
+        <p>Storovex — sell online, without building a shop.</p>
         <p>&copy; {new Date().getFullYear()} Storovex</p>
       </div>
     </footer>
