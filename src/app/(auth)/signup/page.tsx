@@ -31,7 +31,7 @@ export default function SignupPage() {
   return (
     <AuthLayout
       title="Create your account"
-      subtitle="Start generating product photography from a single reference photo."
+      subtitle="Open your shop, list what you sell and take payment. No monthly fee."
       footer={<>Already have an account? <a href="/login" className="font-medium text-brand hover:underline">Log in</a></>}
     >
       {notice && (

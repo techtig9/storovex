@@ -37,7 +37,20 @@ describe("marketing home", () => {
 
   it("tells the user what happens to credits when a generation fails", () => {
     render(<MarketingHomePage />);
-    expect(document.body.textContent).toMatch(/refunded in full/i);
+    // The promise the code actually keeps: a failed generation refunds the credits.
+    expect(document.body.textContent).toMatch(/fails refunds them automatically/i);
+  });
+
+  it("describes the product this codebase actually is", () => {
+    render(<MarketingHomePage />);
+    const text = document.body.textContent ?? "";
+    // The front page sold AI product photography long after the product became a
+    // marketplace. A front door advertising something that does not exist is worse
+    // than a plain one.
+    expect(text).not.toMatch(/photograph/i);
+    expect(text).not.toMatch(/reference photo/i);
+    expect(text).toMatch(/storefront/i);
+    expect(text).toMatch(/Stripe/);
   });
 
   it("has no accessibility violations", async () => {

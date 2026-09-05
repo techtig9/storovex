@@ -18,17 +18,17 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: {
-    default: "Storovex — AI product photography for online stores",
+    default: "Storovex — sell online, without building a shop",
     template: "%s · Storovex",
   },
   description:
-    "Upload one reference photo. Storovex generates hero shots, lifestyle scenes and campaign creative in your store's style — sized and ready to publish.",
+    "Open a storefront, list your products and take payment. No monthly fee — Storovex takes a small percentage of each sale, and the rest goes straight to your own Stripe account.",
   openGraph: {
     type: "website",
     siteName: "Storovex",
-    title: "Storovex — AI product photography for online stores",
+    title: "Storovex — sell online, without building a shop",
     description:
-      "Upload one reference photo and get a full set of product images, sized for your product pages, ads and social.",
+      "Open a storefront, list your products and take payment. Payouts go straight to your own Stripe account.",
   },
   twitter: {card: "summary_large_image"},
   robots: {index: true, follow: true},
