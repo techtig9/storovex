@@ -21,7 +21,8 @@ export default async function CartPage({params}: {params: {slug: string}}) {
   if (!store) notFound();
 
   return (
-    <StorefrontChrome storeName={store.name} slug={params.slug}>
+    <StorefrontChrome storeName={store.name} slug={params.slug}
+      tagline={store.tagline} logoUrl={store.logoUrl} accent={store.themeAccent}>
       <h1 className="mb-6 text-3xl">Your basket</h1>
       {/*
         The basket is rendered on the client: it is keyed by a token held in the

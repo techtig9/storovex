@@ -3,6 +3,9 @@ export const dynamic = "force-dynamic";
 import {type NextRequest} from "next/server";
 import {verifyStripeSignature} from "@/core/payments/stripe";
 import {createServiceRoleSupabase} from "@/core/supabase/server";
+import {send, buildReceipt, type ReceiptOrder} from "@/core/email/emailService";
+import {toMinorUnits} from "@/core/commerce/money";
+import {siteUrl} from "@/core/config/site";
 import {withApi, apiSuccess, apiError} from "@/core/security/apiHandler";
 
 /**
@@ -59,6 +62,10 @@ export const POST = withApi(
       // The sale is committed, so the reservation has served its purpose. The stock
       // stays decremented; releasing it here would put sold goods back on the shelf.
       await releaseReservationsForOrder(orderId);
+      // The receipt goes out here, when the money has actually cleared — not at
+      // checkout, where the payment can still fail and a customer would have a
+      // receipt for something they were never charged for.
+      await sendOrderEmails(orderId);
       return apiSuccess({status: "paid", orderId});
     }
 
@@ -78,6 +85,60 @@ export const POST = withApi(
     return apiSuccess({status: "recorded", type: event.type});
   }
 );
+
+/**
+ * Sends the customer their receipt and tells the merchant to pack it.
+ *
+ * Deliberately cannot fail the webhook. If Stripe gets anything other than a 2xx it
+ * retries, and retrying a paid order because an email bounced would re-run every
+ * step above it. A receipt that did not send is a support question; a webhook that
+ * keeps failing is a broken shop.
+ */
+async function sendOrderEmails(orderId: string) {
+  try {
+    const supabase = createServiceRoleSupabase();
+    const {data: order} = await supabase.from("orders")
+      .select("order_number,email,subtotal,discount_total,shipping_total,tax_total,total,store_id,stores(name)")
+      .eq("id", orderId).maybeSingle();
+    if (!order) return;
+
+    const {data: items} = await supabase.from("order_items")
+      .select("title_snapshot,price_snapshot,quantity").eq("order_id", orderId);
+
+    const store = order.stores as unknown as {name: string} | null;
+    const receiptOrder: ReceiptOrder = {
+      orderNumber: order.order_number as number,
+      storeName: store?.name ?? "the seller",
+      items: (items ?? []).map(i => ({
+        title: i.title_snapshot as string,
+        quantity: i.quantity as number,
+        unitPrice: toMinorUnits(i.price_snapshot as string),
+      })),
+      subtotal: toMinorUnits(order.subtotal as string),
+      discountTotal: toMinorUnits(order.discount_total as string),
+      shippingTotal: toMinorUnits(order.shipping_total as string),
+      taxTotal: toMinorUnits(order.tax_total as string),
+      total: toMinorUnits(order.total as string),
+    };
+
+    const result = await send(buildReceipt({
+      email: order.email as string,
+      order: receiptOrder,
+      orderUrl: `${siteUrl()}/orders/${orderId}`,
+    }));
+
+    // Reported rather than swallowed: a merchant who believes receipts are going
+    // out when they are not will find out from an angry customer instead.
+    if (!result.ok && !result.skipped) {
+      console.error(JSON.stringify({level: "error", code: "RECEIPT_SEND_FAILED", orderId, reason: result.reason}));
+    }
+  } catch (e) {
+    console.error(JSON.stringify({
+      level: "error", code: "ORDER_EMAIL_FAILED", orderId,
+      reason: e instanceof Error ? e.message : String(e),
+    }));
+  }
+}
 
 /** Marks reservations settled without returning stock — the sale went through. */
 async function releaseReservationsForOrder(orderId: string) {

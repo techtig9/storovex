@@ -50,6 +50,11 @@ export function integrationStatuses(): IntegrationStatus[] {
   ];
 }
 
+/** Whether one integration has everything it needs. */
+export function isIntegrationConfigured(id: IntegrationId) {
+  return integrationStatuses().find(s => s.id === id)?.configured ?? false;
+}
+
 /** True only when every integration marked required is fully configured. */
 export function requiredIntegrationsReady() {
   return integrationStatuses().filter(s => s.required).every(s => s.configured);

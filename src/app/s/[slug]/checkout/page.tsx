@@ -30,7 +30,8 @@ export default async function CheckoutPage({
   } catch { codes = {}; }
 
   return (
-    <StorefrontChrome storeName={store.name} slug={params.slug}>
+    <StorefrontChrome storeName={store.name} slug={params.slug}
+      tagline={store.tagline} logoUrl={store.logoUrl} accent={store.themeAccent}>
       <h1 className="mb-6 text-3xl">Checkout</h1>
       <CheckoutScreen
         slug={params.slug}

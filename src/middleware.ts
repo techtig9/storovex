@@ -23,7 +23,8 @@ import {updateSession} from "@/core/supabase/middleware";
 // still refused those callers, so nothing leaked, but an unauthenticated visitor got
 // a broken screen full of errors instead of being sent to sign in.
 const PROTECTED_PREFIXES = [
-  "/dashboard", "/products", "/orders", "/discounts", "/settings", "/admin",
+  "/dashboard", "/products", "/orders", "/discounts",
+  "/collections", "/team", "/settings", "/admin",
 ];
 // Signed-in users are bounced away from these.
 const AUTH_ONLY_PREFIXES = ["/login", "/signup", "/reset-password"];

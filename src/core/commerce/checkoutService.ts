@@ -1,6 +1,7 @@
 import {createServiceRoleSupabase} from "@/core/supabase/server";
 import {toMinorUnits, toDecimalString, applicationFee, type Money} from "./money";
 import {computeTotals, splitByStore, validateDiscount, type Discount, type LineItem} from "./pricing";
+import {settingsFromRow, shippingFor, NO_SHIPPING_OR_TAX, type StoreCommerceSettings} from "./storeSettings";
 import {randomUUID} from "crypto";
 
 /**
@@ -89,15 +90,31 @@ async function loadDiscount(storeId: string, code: string): Promise<Discount | n
   };
 }
 
+/** Each store's shipping and tax rules, fetched once per quote rather than per line. */
+async function loadStoreSettings(storeIds: string[]): Promise<Map<string, StoreCommerceSettings>> {
+  const supabase = createServiceRoleSupabase();
+  const {data} = await supabase.from("stores")
+    .select("id,shipping_flat_rate,shipping_free_threshold,tax_basis_points")
+    .in("id", storeIds);
+  const byStore = new Map<string, StoreCommerceSettings>();
+  for (const row of data ?? []) byStore.set(row.id as string, settingsFromRow(row));
+  // A store with no row still prices, at zero. Refusing to quote because a
+  // settings read came back empty would block a sale over a cosmetic field.
+  for (const id of storeIds) if (!byStore.has(id)) byStore.set(id, NO_SHIPPING_OR_TAX);
+  return byStore;
+}
+
 /** Prices a cart without committing anything. Used to show a total before payment. */
 export async function quoteCart(input: {sessionToken: string; discountCodes?: Record<string, string>}) {
   const {cartId, lines} = await loadCart(input.sessionToken);
   const byStore = splitByStore(lines);
+  const settingsByStore = await loadStoreSettings([...byStore.keys()]);
   const quotes = [];
 
   for (const [storeId, storeLines] of byStore) {
     const code = input.discountCodes?.[storeId];
     const discount = code ? await loadDiscount(storeId, code) : null;
+    const settings = settingsByStore.get(storeId) ?? NO_SHIPPING_OR_TAX;
 
     // A code the shopper typed that does not apply must be reported, not silently
     // dropped — otherwise they pay full price wondering why.
@@ -108,14 +125,25 @@ export async function quoteCart(input: {sessionToken: string; discountCodes?: Re
       if (!check.ok) discountError = check.reason;
     }
 
+    // Shipping depends on the discounted subtotal, so the discount is resolved
+    // first and the goods are priced twice: once to learn what they cost after the
+    // code, and once with postage and tax on top.
+    const goods = computeTotals({items: storeLines, discount: discountError ? null : discount});
     const totals = computeTotals({
       items: storeLines,
       discount: discountError ? null : discount,
+      shippingTotal: shippingFor(settings, goods.subtotal - goods.discountTotal),
+      taxBasisPoints: settings.taxBasisPoints,
     });
 
     quotes.push({
       storeId, lines: storeLines, totals,
+      // The platform fee is taken on the goods, not on postage or tax. Charging a
+      // percentage of the merchant's shipping cost would be taking a cut of money
+      // that goes straight to a courier, and a cut of tax is somebody else's.
       applicationFee: applicationFee(totals.subtotal - totals.discountTotal, DEFAULT_FEE_BASIS_POINTS),
+      shippingTotal: totals.shippingTotal,
+      taxTotal: totals.taxTotal,
       discountCode: discountError ? null : discount?.code ?? null,
       discountError,
     });

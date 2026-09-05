@@ -6,11 +6,17 @@ import {Card, CardBody, CardHeader, CardTitle} from "@/components/ui/Card";
 import {Input} from "@/components/ui/Input";
 import {Badge, ErrorState, Skeleton} from "@/components/ui/States";
 import {useToast} from "@/components/ui/Toast";
+import {Textarea} from "@/components/ui/Input";
 import {api, messageFor} from "@/core/ui/apiClient";
+import {formatMoney} from "@/core/commerce/money";
 
 type Store = {
   id: string; name: string; slug: string;
   stripeConnected: boolean; creditsRemaining: number;
+  tagline: string | null; about: string | null;
+  logoUrl: string | null; themeAccent: string | null;
+  shippingFlatRate: number; shippingFreeThreshold: number | null;
+  taxBasisPoints: number;
 };
 
 export default function SettingsPage() {
@@ -65,6 +71,8 @@ function SettingsScreen() {
         <div className="grid gap-6 lg:grid-cols-2">
           <StoreDetails store={store} onSaved={load} />
           <Payouts store={store} />
+          <ShippingAndTax store={store} onSaved={load} />
+          <Storefront store={store} onSaved={load} />
           <Credits store={store} />
         </div>
       )}
@@ -186,6 +194,166 @@ function Credits({store}: {store: Store}) {
           Credits are spent on video ads and assistant messages. Failed generations are
           refunded automatically.
         </p>
+      </CardBody>
+    </Card>
+  );
+}
+
+/** Decimal input to minor units, for money a merchant types. */
+function toMinor(value: string): number | null {
+  if (value.trim() === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
+
+function ShippingAndTax({store, onSaved}: {store: Store; onSaved: () => Promise<void>}) {
+  const toast = useToast();
+  const [flat, setFlat] = React.useState((store.shippingFlatRate / 100).toFixed(2));
+  const [threshold, setThreshold] = React.useState(
+    store.shippingFreeThreshold === null ? "" : (store.shippingFreeThreshold / 100).toFixed(2));
+  const [taxPercent, setTaxPercent] = React.useState((store.taxBasisPoints / 100).toString());
+  const [saving, setSaving] = React.useState(false);
+
+  const flatMinor = toMinor(flat) ?? 0;
+  const thresholdMinor = threshold.trim() === "" ? null : toMinor(threshold);
+  const taxNumber = Number(taxPercent);
+  const taxOk = Number.isFinite(taxNumber) && taxNumber >= 0 && taxNumber <= 100;
+  const thresholdOk = threshold.trim() === "" || thresholdMinor !== null;
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api("/api/stores", {
+        method: "PATCH",
+        body: {
+          shippingFlatRate: flatMinor,
+          shippingFreeThreshold: thresholdMinor,
+          // Percent to basis points, rounded so 8.25 becomes 825 exactly.
+          taxBasisPoints: Math.round(taxNumber * 100),
+        },
+      });
+      await onSaved();
+      toast.push({tone: "success", title: "Shipping and tax saved"});
+    } catch (err) {
+      toast.push({tone: "danger", title: "Couldn't save", description: messageFor(err)});
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle as="h2">Shipping &amp; tax</CardTitle></CardHeader>
+      <CardBody>
+        <form onSubmit={save} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input label="Shipping per order" inputMode="decimal" placeholder="4.99"
+              hint="Charged once per order, not per item."
+              value={flat} onChange={e => setFlat(e.target.value)} />
+            <Input label="Free shipping over" inputMode="decimal" placeholder="50.00"
+              hint="Leave blank to always charge."
+              error={!thresholdOk ? "Enter an amount, or leave it blank." : undefined}
+              value={threshold} onChange={e => setThreshold(e.target.value)} />
+          </div>
+          <Input label="Tax rate (%)" inputMode="decimal" placeholder="8.25"
+            hint="Applied to goods plus shipping, after any discount."
+            error={taxPercent && !taxOk ? "Between 0 and 100." : undefined}
+            value={taxPercent} onChange={e => setTaxPercent(e.target.value)} />
+
+          {/*
+            Shows the merchant the arithmetic on a real basket, because a rate typed
+            into a box is not the same as seeing what a customer will be charged.
+          */}
+          <p className="rounded-lg border border-line bg-surface-raised p-3 text-sm text-ink-muted">
+            On a {formatMoney(4000)} order you would charge{" "}
+            <span className="text-ink">
+              {formatMoney(thresholdMinor !== null && 4000 >= thresholdMinor ? 0 : flatMinor)}
+            </span>{" "}
+            shipping and{" "}
+            <span className="text-ink">
+              {formatMoney(Math.floor(((4000 + (thresholdMinor !== null && 4000 >= thresholdMinor ? 0 : flatMinor)) * Math.round((taxOk ? taxNumber : 0) * 100)) / 10000))}
+            </span>{" "}
+            tax.
+          </p>
+
+          <div className="flex justify-end">
+            <Button type="submit" loading={saving} disabled={!taxOk || !thresholdOk}>
+              Save
+            </Button>
+          </div>
+        </form>
+      </CardBody>
+    </Card>
+  );
+}
+
+function Storefront({store, onSaved}: {store: Store; onSaved: () => Promise<void>}) {
+  const toast = useToast();
+  const [tagline, setTagline] = React.useState(store.tagline ?? "");
+  const [about, setAbout] = React.useState(store.about ?? "");
+  const [logoUrl, setLogoUrl] = React.useState(store.logoUrl ?? "");
+  const [accent, setAccent] = React.useState(store.themeAccent ?? "#2E5AAC");
+  const [saving, setSaving] = React.useState(false);
+
+  const accentOk = /^#[0-9A-Fa-f]{6}$/.test(accent);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api("/api/stores", {
+        method: "PATCH",
+        body: {
+          tagline: tagline.trim() || null,
+          about: about.trim() || null,
+          logoUrl: logoUrl.trim() || null,
+          themeAccent: accentOk ? accent : null,
+        },
+      });
+      await onSaved();
+      toast.push({tone: "success", title: "Storefront updated"});
+    } catch (err) {
+      toast.push({tone: "danger", title: "Couldn't save", description: messageFor(err)});
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle as="h2">Storefront appearance</CardTitle></CardHeader>
+      <CardBody>
+        <form onSubmit={save} className="space-y-4">
+          <Input label="Tagline" maxLength={160} placeholder="Hand-knitted, made to last"
+            hint="Shown under your store name."
+            value={tagline} onChange={e => setTagline(e.target.value)} />
+          <Textarea label="About" maxLength={2000} rows={4}
+            hint="A short paragraph about your shop."
+            value={about} onChange={e => setAbout(e.target.value)} />
+          <Input label="Logo link" type="url" maxLength={2048} placeholder="https://…"
+            hint="An https link to an image."
+            value={logoUrl} onChange={e => setLogoUrl(e.target.value)} />
+
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <Input label="Accent colour" maxLength={7} placeholder="#2E5AAC"
+                error={accent && !accentOk ? "Use a hex colour like #2E5AAC." : undefined}
+                value={accent} onChange={e => setAccent(e.target.value)} />
+            </div>
+            <div aria-hidden="true"
+                 className="mb-1 h-11 w-11 shrink-0 rounded-md border border-line"
+                 style={{background: accentOk ? accent : "transparent"}} />
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <a href={`/s/${store.slug}`} className="text-sm text-ink-muted underline-offset-2 hover:underline">
+              Preview your storefront
+            </a>
+            <Button type="submit" loading={saving} disabled={Boolean(accent) && !accentOk}>Save</Button>
+          </div>
+        </form>
       </CardBody>
     </Card>
   );

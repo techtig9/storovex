@@ -1,6 +1,7 @@
 import {NextResponse, type NextRequest} from "next/server";
 import {createServiceRoleSupabase} from "@/core/supabase/server";
 import {redact} from "./redaction";
+import {log, requestIdFrom, durationMs} from "./observability";
 import {INPUT_LIMITS} from "./limits";
 
 export type ApiOptions = {
@@ -97,15 +98,29 @@ export function withApi(
   handler: (req: NextRequest, ctx: {params?: Record<string, string>}) => Promise<NextResponse>
 ) {
   return async (req: NextRequest, ctx: {params?: Record<string, string>} = {}) => {
+    // Every line this request logs carries this id, and it goes back in a header so
+    // whoever reports a problem can quote it.
+    const requestId = requestIdFrom(req.headers);
+    const startedAt = performance.now();
+    const route = new URL(req.url).pathname;
+
+    const finish = (res: NextResponse) => {
+      res.headers.set("X-Request-Id", requestId);
+      log(res.status >= 500 ? "error" : res.status >= 400 ? "warn" : "info",
+          requestId, "request",
+          {method: req.method, route, status: res.status, durationMs: durationMs(startedAt)});
+      return res;
+    };
+
     try {
       if (!options.methods.includes(req.method)) {
-        return apiError(405, "METHOD_NOT_ALLOWED", "That method isn't allowed here.");
+        return finish(apiError(405, "METHOD_NOT_ALLOWED", "That method isn't allowed here."));
       }
 
       if (!options.allowAnyContentType && ["POST", "PUT", "PATCH"].includes(req.method)) {
         const ct = (req.headers.get("content-type") ?? "").toLowerCase();
         if (!ct.includes("application/json")) {
-          return apiError(415, "UNSUPPORTED_MEDIA_TYPE", "Expected application/json.");
+          return finish(apiError(415, "UNSUPPORTED_MEDIA_TYPE", "Expected application/json."));
         }
       }
 
@@ -117,27 +132,30 @@ export function withApi(
           res.headers.set("Retry-After", String(result.retry_after_seconds));
           res.headers.set("X-RateLimit-Limit", String(result.limit));
           res.headers.set("X-RateLimit-Remaining", "0");
-          return res;
+          return finish(res);
         }
       }
 
-      return await handler(req, ctx);
+      return finish(await handler(req, ctx));
     } catch (e) {
-      if (e instanceof ApiFailure) return apiError(e.status, e.code, e.publicMessage);
+      if (e instanceof ApiFailure) return finish(apiError(e.status, e.code, e.publicMessage));
 
       const message = e instanceof Error ? e.message : String(e);
       // Authorization failures thrown from deeper layers map to 401/403 without the
       // caller having to catch them individually.
       if (message === "UNAUTHENTICATED") {
-        return apiError(401, "UNAUTHENTICATED", "You need to be signed in.");
+        return finish(apiError(401, "UNAUTHENTICATED", "You need to be signed in."));
       }
       if (message === "FORBIDDEN" || message === "STORE_ACCESS_DENIED" || message === "RESOURCE_ACCESS_DENIED") {
-        return apiError(403, "FORBIDDEN", "You don't have access to that.");
+        return finish(apiError(403, "FORBIDDEN", "You don't have access to that."));
       }
       if (message === "PLATFORM_ADMIN_REQUIRED") {
-        return apiError(403, "FORBIDDEN", "You don't have access to that.");
+        return finish(apiError(403, "FORBIDDEN", "You don't have access to that."));
       }
-      return apiError(500, "INTERNAL_ERROR", "Something went wrong on our end.", e);
+      // The request id is logged with the failure and returned in the header, so a
+      // report of "it broke" can be matched to the exact line that recorded it.
+      log("error", requestId, "unhandled", {route, message});
+      return finish(apiError(500, "INTERNAL_ERROR", "Something went wrong on our end.", e));
     }
   };
 }

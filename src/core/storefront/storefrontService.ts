@@ -18,8 +18,25 @@ export type StorefrontProduct = {
 export async function getStoreBySlug(slug: string) {
   const supabase = createServerSupabase();
   const {data} = await supabase
-    .from("stores").select("id,name,slug").eq("slug", slug).maybeSingle();
-  return data ?? null;
+    .from("stores")
+    .select("id,name,slug,tagline,about,logo_url,theme_accent,shipping_flat_rate,shipping_free_threshold,tax_basis_points")
+    .eq("slug", slug).maybeSingle();
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    name: data.name as string,
+    slug: data.slug as string,
+    tagline: (data.tagline as string | null) ?? null,
+    about: (data.about as string | null) ?? null,
+    logoUrl: (data.logo_url as string | null) ?? null,
+    // Only ever a hex literal — both the column constraint and the API refuse
+    // anything else, because this value is interpolated into a stylesheet.
+    themeAccent: (data.theme_accent as string | null) ?? null,
+    shippingFlatRate: data.shipping_flat_rate == null ? 0 : toMinorUnits(data.shipping_flat_rate as string),
+    shippingFreeThreshold: data.shipping_free_threshold == null
+      ? null : toMinorUnits(data.shipping_free_threshold as string),
+    taxBasisPoints: Number(data.tax_basis_points ?? 0),
+  };
 }
 
 export async function listStorefrontProducts(storeId: string, opts: {limit?: number; search?: string} = {}) {

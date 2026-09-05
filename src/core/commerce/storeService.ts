@@ -1,4 +1,6 @@
 import {createServerSupabase, createServiceRoleSupabase} from "@/core/supabase/server";
+import {toMinorUnits, toDecimalString, type Money} from "./money";
+import {isSafeImageUrl} from "@/core/security/url";
 
 /**
  * The merchant's own store record.
@@ -17,7 +19,7 @@ export async function getStoreForMerchant(storeId: string) {
   // account is connected, and that column is not client-readable.
   const admin = createServiceRoleSupabase();
   const {data} = await admin.from("stores")
-    .select("id,name,slug,stripe_account_id,subscription_id,created_at")
+    .select("id,name,slug,stripe_account_id,subscription_id,created_at,tagline,about,logo_url,theme_accent,shipping_flat_rate,shipping_free_threshold,tax_basis_points")
     .eq("id", storeId).maybeSingle();
   if (!data) throw new StoreError("STORE_NOT_FOUND");
 
@@ -36,13 +38,69 @@ export async function getStoreForMerchant(storeId: string) {
     stripeConnected: Boolean(data.stripe_account_id),
     creditsRemaining: (subscription?.credits_remaining as number | undefined) ?? 0,
     createdAt: data.created_at as string,
+    tagline: (data.tagline as string | null) ?? null,
+    about: (data.about as string | null) ?? null,
+    logoUrl: (data.logo_url as string | null) ?? null,
+    themeAccent: (data.theme_accent as string | null) ?? null,
+    // Money out as minor units, like everywhere else.
+    shippingFlatRate: data.shipping_flat_rate == null ? 0 : toMinorUnits(data.shipping_flat_rate as string),
+    shippingFreeThreshold: data.shipping_free_threshold == null
+      ? null : toMinorUnits(data.shipping_free_threshold as string),
+    taxBasisPoints: Number(data.tax_basis_points ?? 0),
   };
 }
 
-export async function updateStore(input: {storeId: string; name?: string; slug?: string}) {
+export async function updateStore(input: {
+  storeId: string; name?: string; slug?: string;
+  tagline?: string | null; about?: string | null;
+  logoUrl?: string | null; themeAccent?: string | null;
+  shippingFlatRate?: Money; shippingFreeThreshold?: Money | null;
+  taxBasisPoints?: number;
+}) {
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name.trim();
   if (input.slug !== undefined) patch.slug = input.slug.trim().toLowerCase();
+  if (input.tagline !== undefined) patch.tagline = input.tagline?.trim() || null;
+  if (input.about !== undefined) patch.about = input.about?.trim() || null;
+
+  if (input.logoUrl !== undefined) {
+    // The logo is rendered on a public storefront, so it gets the same check as a
+    // product image: https only, no private or loopback hosts.
+    if (input.logoUrl && !isSafeImageUrl(input.logoUrl)) throw new StoreError("LOGO_URL_INVALID");
+    patch.logo_url = input.logoUrl || null;
+  }
+
+  if (input.themeAccent !== undefined) {
+    // This value is interpolated into a stylesheet on a public page. Anything but a
+    // hex literal is refused here as well as by the database constraint.
+    if (input.themeAccent && !/^#[0-9A-Fa-f]{6}$/.test(input.themeAccent)) {
+      throw new StoreError("ACCENT_INVALID");
+    }
+    patch.theme_accent = input.themeAccent || null;
+  }
+
+  if (input.shippingFlatRate !== undefined) {
+    if (!Number.isInteger(input.shippingFlatRate) || input.shippingFlatRate < 0) {
+      throw new StoreError("SHIPPING_INVALID");
+    }
+    patch.shipping_flat_rate = toDecimalString(input.shippingFlatRate);
+  }
+  if (input.shippingFreeThreshold !== undefined) {
+    if (input.shippingFreeThreshold !== null &&
+        (!Number.isInteger(input.shippingFreeThreshold) || input.shippingFreeThreshold < 0)) {
+      throw new StoreError("THRESHOLD_INVALID");
+    }
+    patch.shipping_free_threshold = input.shippingFreeThreshold === null
+      ? null : toDecimalString(input.shippingFreeThreshold);
+  }
+  if (input.taxBasisPoints !== undefined) {
+    if (!Number.isInteger(input.taxBasisPoints) ||
+        input.taxBasisPoints < 0 || input.taxBasisPoints > 10000) {
+      throw new StoreError("TAX_RATE_INVALID");
+    }
+    patch.tax_basis_points = input.taxBasisPoints;
+  }
+
   if (Object.keys(patch).length === 0) throw new StoreError("NOTHING_TO_UPDATE");
 
   if (typeof patch.slug === "string" && !/^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$/.test(patch.slug)) {

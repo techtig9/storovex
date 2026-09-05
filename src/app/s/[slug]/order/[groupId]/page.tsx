@@ -20,7 +20,8 @@ export default async function OrderPage({params}: {params: {slug: string; groupI
   if (!store) notFound();
 
   return (
-    <StorefrontChrome storeName={store.name} slug={params.slug}>
+    <StorefrontChrome storeName={store.name} slug={params.slug}
+      tagline={store.tagline} logoUrl={store.logoUrl} accent={store.themeAccent}>
       <OrderConfirmation groupId={params.groupId} slug={params.slug} />
     </StorefrontChrome>
   );

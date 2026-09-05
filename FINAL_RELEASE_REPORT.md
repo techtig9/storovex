@@ -177,106 +177,98 @@ Everything else applied is additive.
 
 ---
 
-## 7. The interface, now built
+## 7. Everything that is built
 
-Every screen listed as missing in the previous report now exists.
+**Merchant** — dashboard on real figures; products with search and filters; product
+editor (variants, prices, stock, images, publishing); orders with fulfil, cancel and
+refund; discounts; **collections**; **team management**; settings covering store
+details, Stripe Connect, **shipping and tax**, and **storefront appearance**.
 
-**For merchants** — `/products` with search, status filter and pagination;
-`/products/[id]` for details, variants, prices, stock, images and publishing;
-`/orders` and `/orders/[id]` with fulfil, cancel and refund; `/discounts`;
-`/settings` including Stripe Connect onboarding; and a dashboard reporting real
-figures instead of a hardcoded empty state.
+**Shopper** — branded storefront with an About section and postage stated up front;
+product pages; basket with quantities, discount codes and a full total; checkout
+with Stripe's Payment Element; order confirmation.
 
-**For shoppers** — `/s/[slug]/cart` with quantities, removal and discount codes;
-`/s/[slug]/checkout` with Stripe's Payment Element; and
-`/s/[slug]/order/[groupId]` for confirmation. **A purchase can now be completed
-through the interface**, which was not true before.
+**Platform** — an **admin console** across every store, showing marketplace sales
+and platform revenue as separate figures, and counting the stores that cannot yet
+take payment.
 
-**Also** — `/terms` and `/privacy`, and new APIs for orders, discounts, stock,
-product images and stores.
+**Behind it** — **transactional receipts** sent when payment clears; **request-scoped
+structured logging** with an `X-Request-Id` on every response; 36 RLS policies; a
+commerce core in integer minor units.
 
-Decisions worth knowing:
+## 8. Decisions worth knowing
 
-- **Stock changes by a delta, never by setting a total.** A merchant typing "50"
-  on a page loaded five minutes ago would overwrite every sale made since.
-- **Only transitions the server will accept are offered.** The order page reads
-  its available actions from the order itself, so a button never appears for a
-  move the API will reject. Unpaid orders cannot be fulfilled; refunded and
-  cancelled are terminal.
-- **Refunds claim the transition before calling Stripe** and put it back if the
-  call fails, so two clicks cannot refund twice and a failed refund never leaves
-  an order marked as refunded.
-- **The confirmation page requires the email, not just the link.** The order id
-  is in the URL, so it reaches history, referrers and anyone it is pasted to.
-- **`stripe_account_id` never reaches the browser** — the API returns only
-  whether onboarding finished.
-- **A discount's code and value cannot be edited** once created, because changing
-  what a code was worth after it has been used makes the order history
-  unexplainable.
+- **Shipping is charged per order, per store.** A multi-store basket is several
+  orders, and each merchant ships their own parcel.
+- **The free-shipping threshold is compared after the discount.** Otherwise a code
+  that takes a basket under the line is quietly worth more than its face value and
+  the merchant absorbs the difference.
+- **Tax applies to goods plus postage, after the discount, rounded down.** A cent
+  invented by rounding is a cent the merchant must remit and never collected.
+- **The platform fee is taken on goods only** — not on postage or tax. A percentage
+  of shipping is a cut of money going straight to a courier.
+- **The last manager cannot be demoted or removed.** A store with no manager is
+  unrecoverable: nobody left can promote anyone back.
+- **Categories are the platform's, collections are the merchant's.** A marketplace
+  where every seller invents category names cannot be browsed across sellers.
+- **The receipt is sent from the webhook, not at checkout**, so it goes out when the
+  money actually clears — and it can never fail the webhook, because Stripe retries
+  a non-2xx and that would re-run every step above it.
+- **Email reports `skipped` when unconfigured** rather than returning success. A
+  silent no-op is how a merchant comes to believe receipts are going out.
+- **An inbound `X-Request-Id` is only honoured if it looks like one.** Echoing
+  arbitrary client text into logs lets a caller forge their own entries.
+- **The accent colour is a CSS custom property**, constrained to a hex literal by
+  both the API and a database check, so merchant text never becomes markup.
 
-## 8. Three bugs found by running it, not by reading it
+## 9. Bugs found by running it, not reading it
 
-**Route protection was completely inert.** `middleware.ts` sat at the repository
-root; Next.js looks for it inside `src/` in a `src/app` project. The build
-manifest read `"middleware": []` — **no middleware was compiled at all**. Every
-protected route served to signed-out visitors, and sessions were never refreshed,
-so users would be logged out whenever their token expired. The file typechecked,
-linted and read correctly; it was simply never loaded. Moving it to
-`src/middleware.ts` was the whole fix, and a test now asserts its location,
-because nothing else can catch this.
+- **Route protection was completely inert.** `middleware.ts` sat at the repository
+  root; Next.js looks inside `src/` for a `src/app` project, so the build manifest
+  read `"middleware": []` and no middleware compiled at all. It typechecked and
+  linted the whole time. A test now asserts its location.
+- **Checkout wrote a cart status the database forbids** (`checked_out`). supabase-js
+  returns errors rather than throwing and the result was discarded, so the write
+  failed silently and left the cart open — the same basket could be checked out
+  twice, creating two sets of orders for one shopper.
+- **Every storefront query filtered `status = 'published'`**, which the constraint
+  does not allow. The catalogue would have returned nothing, forever.
+- **`is_store_admin()` checked for `owner`/`admin`** where the constraint allows
+  `manager | staff`, so every admin-gated policy denied everyone including the owner.
+- **An anonymous caller could drain a store's entire inventory** through
+  `reserve_stock_with_expiry`, exposed at `/rest/v1/rpc/`. Verified by doing it.
 
-**The protected list named routes that no longer exist.** It listed `/generate`,
-`/billing` and `/projects` from the photography codebase while omitting
-`/products`, `/orders` and `/discounts`. The API still refused those callers, so
-nothing leaked, but a signed-out visitor got a screen full of errors instead of a
-login page.
+## 10. What is still not done
 
-**Checkout wrote a cart status the database forbids.** `carts.status =
-"checked_out"`; the constraint allows `open | converted | abandoned`. supabase-js
-returns errors rather than throwing and the result was discarded, so the write
-failed silently and left the cart open — **the same basket could be checked out
-again, creating a second set of orders for one shopper.**
+**No live payment has been taken.** Stripe, Resend and the AI providers are
+exercised against injected responses shaped like their documented APIs.
 
-Also fixed: `analyticsService` counted `"shipped"` and `"delivered"` order
-statuses that cannot exist, and `uploadService` wrote to a `file_assets` table
-this project does not have. That upload path is replaced by real image management
-against `product_images`.
+**The storefront pages are not browser-verified end to end.** This sandbox's proxy
+blocks Supabase's REST domain, so a running storefront cannot load its own data
+here. They are covered by component tests instead; the public pages, route
+protection and merchant screens *are* browser-verified across five viewports.
 
-## 9. What is still not done
+**Not built:** a drag-and-drop visual page builder. Storefront customisation is
+name, tagline, about, logo and accent colour — real and applied, but it is
+configuration, not a canvas. Shipping is a flat rate with a free-over threshold,
+not per-region or per-weight rates. Product images are added by https URL rather
+than uploaded, because I could not verify a storage bucket or test an upload from
+here.
 
-**No live payment has been taken.** Stripe is exercised against injected
-responses shaped like its documented API. Nothing has been charged.
+**`stores` and `subscriptions` were restored** after an incident with a reset script
+of mine, and the restored definition has 7 of the original 15 columns.
+`INCIDENT_2026-09-04_schema_reset.md` records it.
 
-**The storefront pages are not browser-verified end to end.** This sandbox's
-proxy blocks Supabase's REST domain — only the MCP connector reaches the database
-— so a running storefront cannot load its own data here. Those screens are
-covered by component tests against mocked responses instead, and the public
-pages, route protection and merchant screens *are* browser-verified. This is a
-limit of where I am running, not a known defect.
+## 11. Honest state
 
-**Not built:** the visual store builder, which remains the largest missing piece;
-team management (the roles and permissions exist, the screen does not);
-collections and categories management; shipping rates and tax rules, which are
-currently always zero; transactional email; an admin console; and structured
-logging with request IDs.
+The database is well secured, and that claim rests on probes run against the live
+project. The commerce, credit, shipping, tax and payment logic is carefully reasoned
+and thoroughly tested. The interface is complete end to end: a merchant can set up a
+store, price and stock it, brand it, publish it, take an order and refund it; a
+shopper can browse, fill a basket, apply a code, see the real total including
+postage, and pay.
 
-**Image uploads are by URL**, not direct file upload. Supabase Storage would be
-the right home, but I could not verify a bucket exists or test an upload from
-here, so I built what I could actually test.
+What has still never happened is a real payment. Everything past Stripe's API
+boundary is verified against mocked responses.
 
-## 10. Honest state
-
-The database is genuinely well secured, and that rests on probes run against the
-live project. The commerce, credit and payment logic is carefully reasoned and
-well tested. The interface now exists end to end: a merchant can add a product,
-price it, stock it, publish it and fulfil the order; a shopper can browse, fill a
-basket, apply a code and pay.
-
-What has still never happened is a real payment. Everything downstream of
-Stripe's API boundary is verified against mocked responses, and the storefront
-has not been driven in a browser against real data.
-
-Two things would close that: **a Stripe test key**, to put a real payment
-through, and **the original `stores` and `subscriptions` column list**, so the
-restored tables can be completed. With those, the next session can run the full
-purchase end to end and know it works rather than believe it does.
+One thing closes that: **a Stripe test key**, to put a payment through end to end.

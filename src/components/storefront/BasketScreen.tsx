@@ -235,6 +235,29 @@ export function BasketScreen({slug}: {slug: string}) {
                     <dd className="tabular-nums">−{formatMoney(store.totals.discountTotal)}</dd>
                   </div>
                 )}
+                {/*
+                  Postage and tax shown here rather than only at payment. A total
+                  that grows at the last step is the most common reason a basket is
+                  abandoned, and "calculated at checkout" is what causes it.
+                */}
+                {store.totals.shippingTotal > 0 && (
+                  <div className="flex justify-between">
+                    <dt className="text-ink-muted">Shipping</dt>
+                    <dd className="tabular-nums">{formatMoney(store.totals.shippingTotal)}</dd>
+                  </div>
+                )}
+                {store.totals.shippingTotal === 0 && store.totals.subtotal > 0 && (
+                  <div className="flex justify-between">
+                    <dt className="text-ink-muted">Shipping</dt>
+                    <dd className="text-success">Free</dd>
+                  </div>
+                )}
+                {store.totals.taxTotal > 0 && (
+                  <div className="flex justify-between">
+                    <dt className="text-ink-muted">Tax</dt>
+                    <dd className="tabular-nums">{formatMoney(store.totals.taxTotal)}</dd>
+                  </div>
+                )}
               </React.Fragment>
             ))}
             <div className="flex justify-between border-t border-line pt-3 text-md font-semibold">
@@ -242,10 +265,6 @@ export function BasketScreen({slug}: {slug: string}) {
               <dd className="tabular-nums">{formatMoney(quote.grandTotal)}</dd>
             </div>
           </dl>
-
-          <p className="text-sm text-ink-subtle">
-            Shipping and tax are calculated at checkout.
-          </p>
 
           <Button size="lg" fullWidth
             onClick={() => {

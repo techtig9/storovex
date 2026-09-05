@@ -11,6 +11,15 @@ const patchSchema = z.object({
   storeId: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(120).optional(),
   slug: z.string().trim().min(3).max(60).optional(),
+  tagline: z.string().trim().max(160).nullable().optional(),
+  about: z.string().trim().max(2000).nullable().optional(),
+  logoUrl: z.string().trim().max(2048).nullable().optional(),
+  themeAccent: z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
+  // Money in minor units, tax in basis points — the same units the rest of the
+  // system uses, so nothing has to convert at a boundary.
+  shippingFlatRate: z.number().int().min(0).max(100_000_00).optional(),
+  shippingFreeThreshold: z.number().int().min(0).max(100_000_00).nullable().optional(),
+  taxBasisPoints: z.number().int().min(0).max(10000).optional(),
 }).strict();
 
 export const GET = withApi(
@@ -44,6 +53,11 @@ export const PATCH = withApi(
         STORE_UPDATE_FORBIDDEN: [403, "Only a manager can change store details."],
         NOTHING_TO_UPDATE: [400, "No changes were supplied."],
         STORE_NOT_FOUND: [404, "That store doesn't exist."],
+        LOGO_URL_INVALID: [422, "A logo needs to be an https link to an image."],
+        ACCENT_INVALID: [422, "Pick a colour like #2E5AAC."],
+        SHIPPING_INVALID: [422, "Shipping can't be negative."],
+        THRESHOLD_INVALID: [422, "The free-shipping threshold can't be negative."],
+        TAX_RATE_INVALID: [422, "A tax rate has to be between 0% and 100%."],
       };
       const [status, message] = messages[e.code] ?? [400, "We couldn't save those changes."];
       return apiError(status, e.code, message, e.detail);
